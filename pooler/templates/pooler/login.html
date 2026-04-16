@@ -1,0 +1,39 @@
+{% load static i18n %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% trans "Login" %} — VPN Pooler</title>
+    <link rel="stylesheet" href="{% static 'pooler/style.css' %}">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h2><span style="color:var(--fi-primary)">VPN</span>Pooler</h2>
+            <p style="text-align:center;font-size:12px;color:var(--fi-text-muted);margin-bottom:20px">
+                {% trans "Sign in with your privacyIDEA admin account" %}
+            </p>
+            {% if messages %}
+            <div class="messages">
+                {% for msg in messages %}
+                <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <form method="post">
+                {% csrf_token %}
+                <div class="field">
+                    <label for="username">{% trans "Username" %}</label>
+                    <input type="text" id="username" name="username" autofocus required>
+                </div>
+                <div class="field">
+                    <label for="password">{% trans "Password" %}</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top:8px">{% trans "Login" %}</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

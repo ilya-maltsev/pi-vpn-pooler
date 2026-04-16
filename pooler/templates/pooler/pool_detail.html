@@ -1,0 +1,132 @@
+{% extends "pooler/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ pool.name }} — VPN Pooler{% endblock %}
+{% block page_title %}{% trans "Pool" %}: {{ pool.name }}{% endblock %}
+
+{% block content %}
+<!-- Pool info panel -->
+<div class="panel">
+    <div class="panel-header">{% trans "Pool Details" %}</div>
+    <div class="panel-body">
+        <div class="detail-row"><div class="detail-label">{% trans "Name" %}</div><div class="detail-value">{{ pool.name }}</div></div>
+        <div class="detail-row"><div class="detail-label">{% trans "CIDR" %}</div><div class="detail-value">{{ pool.cidr }}</div></div>
+        <div class="detail-row"><div class="detail-label">{% trans "Attribute Key" %}</div><div class="detail-value"><span class="badge badge-info">{{ pool.attr_key }}</span></div></div>
+        <div class="detail-row"><div class="detail-label">{% trans "Gateway" %}</div><div class="detail-value">{{ pool.gateway_ip|default:"-" }}</div></div>
+        <div class="detail-row"><div class="detail-label">{% trans "Description" %}</div><div class="detail-value">{{ pool.description|default:"-" }}</div></div>
+        <div class="detail-row">
+            <div class="detail-label">{% trans "Usage" %}</div>
+            <div class="detail-value">
+                {{ stats.allocated }} / {{ stats.total }} ({{ stats.percent }}%)
+                <div class="progress-bar" style="max-width:300px">
+                    <div class="progress-bar-fill {% if stats.percent < 60 %}low{% elif stats.percent < 85 %}mid{% else %}high{% endif %}"
+                         style="width:{{ stats.percent }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:20px">
+    <a href="{% url 'pool_edit' pk=pool.pk %}" class="btn btn-default"><i class="fa fa-pencil"></i> {% trans "Edit" %}</a>
+    <form method="post" action="{% url 'pool_delete' pk=pool.pk %}" style="display:inline" id="delete-form">
+        {% csrf_token %}
+        <button type="button" class="btn btn-error" onclick="showConfirm('{% trans "Delete this pool?" %}', function(){ document.getElementById('delete-form').submit(); })">
+            <i class="fa fa-trash"></i> {% trans "Delete" %}
+        </button>
+    </form>
+</div>
+
+<!-- Allocate IP form -->
+<div class="panel">
+    <div class="panel-header">{% trans "Allocate IP Address" %}</div>
+    <div class="panel-body">
+        <form method="post" action="{% url 'allocate' pk=pool.pk %}">
+            {% csrf_token %}
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 20px;align-items:end">
+                <div>
+                    <label for="realm">{% trans "Realm" %}</label>
+                    <select id="realm" name="realm" required>
+                        <option value="">— {% trans "Select realm" %} —</option>
+                        {% for r in realms %}
+                        <option value="{{ r }}">{{ r }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="username">{% trans "Username" %}</label>
+                    <input type="text" id="username" name="username" placeholder="{% trans 'Start typing...' %}" required autocomplete="off" list="user-suggestions">
+                    <datalist id="user-suggestions"></datalist>
+                </div>
+                <div>
+                    <label for="ip_address">{% trans "IP Address" %}</label>
+                    <select id="ip_address" name="ip_address">
+                        <option value="">{% trans "Next available" %}</option>
+                        {% for ip in free_ips %}
+                        <option value="{{ ip }}">{{ ip }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-success" style="margin-bottom:0">
+                        <i class="fa fa-plus"></i> {% trans "Allocate" %}
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Allocations table -->
+<div class="table-wrap">
+    <table class="datatable">
+        <thead>
+            <tr>
+                <th>{% trans "IP Address" %}</th>
+                <th>{% trans "Username" %}</th>
+                <th>{% trans "Realm" %}</th>
+                <th>{% trans "Attribute" %}</th>
+                <th>{% trans "Synced" %}</th>
+                <th>{% trans "Actions" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for alloc in allocations %}
+            <tr>
+                <td><strong>{{ alloc.ip_address }}</strong></td>
+                <td>{{ alloc.username }}</td>
+                <td>{{ alloc.realm }}</td>
+                <td><span class="badge badge-info">{{ alloc.attr_key }}</span></td>
+                <td>{{ alloc.synced_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    <form method="post" action="{% url 'release' pk=pool.pk ip=alloc.ip_address %}" style="display:inline" id="release-{{ forloop.counter }}">
+                        {% csrf_token %}
+                        <button type="button" class="btn btn-error" style="padding:3px 10px;font-size:12px"
+                                onclick="showConfirm('{% trans "Release" %} {{ alloc.ip_address }} {% trans "from" %} {{ alloc.username }}?', function(){ document.getElementById('release-{{ forloop.counter }}').submit(); })">
+                            <i class="fa fa-times"></i> {% trans "Release" %}
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// User autocomplete based on selected realm
+$('#realm').on('change', function() {
+    var realm = $(this).val();
+    var $list = $('#user-suggestions');
+    $list.empty();
+    if (!realm) return;
+    $.getJSON('{% url "api_users" %}', {realm: realm}, function(data) {
+        (data.users || []).forEach(function(u) {
+            $list.append($('<option>').val(u));
+        });
+    });
+});
+</script>
+{% endblock %}

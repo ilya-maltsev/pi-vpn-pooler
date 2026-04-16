@@ -1,0 +1,43 @@
+{% extends "pooler/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Sync History" %} — VPN Pooler{% endblock %}
+{% block page_title %}{% trans "Sync History" %}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:14px">
+    <form method="post" action="{% url 'sync' %}" style="display:inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">
+            <i class="fa fa-refresh"></i> {% trans "Sync Now" %}
+        </button>
+    </form>
+</div>
+
+<div class="table-wrap">
+    <table class="datatable">
+        <thead>
+            <tr>
+                <th>{% trans "Started" %}</th>
+                <th>{% trans "Finished" %}</th>
+                <th>{% trans "Status" %}</th>
+                <th>{% trans "Details" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.started_at|date:"Y-m-d H:i:s" }}</td>
+                <td>{{ log.finished_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+                <td>
+                    <span class="badge {% if log.status == 'success' %}badge-on{% elif log.status == 'error' %}badge-off{% else %}badge-warn{% endif %}">
+                        {{ log.status }}
+                    </span>
+                </td>
+                <td>{{ log.details|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

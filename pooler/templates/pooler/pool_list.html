@@ -1,0 +1,42 @@
+{% extends "pooler/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "VPN Pools" %} — VPN Pooler{% endblock %}
+{% block page_title %}{% trans "VPN Pools" %}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:14px">
+    <a href="{% url 'pool_create' %}" class="btn btn-primary">
+        <i class="fa fa-plus"></i> {% trans "Create Pool" %}
+    </a>
+</div>
+
+<div class="table-wrap">
+    <table class="datatable">
+        <thead>
+            <tr>
+                <th>{% trans "Name" %}</th>
+                <th>{% trans "CIDR" %}</th>
+                <th>{% trans "Attribute Key" %}</th>
+                <th>{% trans "Allocated" %}</th>
+                <th>{% trans "Free" %}</th>
+                <th>{% trans "Usage" %}</th>
+                <th>{% trans "Description" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in pool_data %}
+            <tr style="cursor:pointer" onclick="window.location='{% url 'pool_detail' pk=item.pool.pk %}'">
+                <td><strong>{{ item.pool.name }}</strong></td>
+                <td>{{ item.pool.cidr }}</td>
+                <td><span class="badge badge-info">{{ item.pool.attr_key }}</span></td>
+                <td style="text-align:center">{{ item.allocated }}</td>
+                <td style="text-align:center">{{ item.free }}</td>
+                <td style="text-align:center">{{ item.percent }}%</td>
+                <td>{{ item.pool.description|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
