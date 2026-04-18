@@ -214,6 +214,13 @@ You can also add the pooler as a service in the main
 | `DJANGO_ALLOWED_HOSTS` | `*` | Comma-separated allowed hostnames |
 | `CSRF_TRUSTED_ORIGINS` | `http://localhost:*` | Comma-separated trusted origins for CSRF |
 | `DJANGO_LOG_LEVEL` | `INFO` | Logging level for `pooler` logger |
+| `SYSLOG_ENABLED` | `false` | Enable remote syslog forwarding from Django. When `false`, logs only go to stdout / container logs. |
+| `SYSLOG_HOST` | (empty) | Remote rsyslog host. Required when `SYSLOG_ENABLED=true`. |
+| `SYSLOG_PORT` | `514` | Remote rsyslog port |
+| `SYSLOG_PROTO` | `udp` | Transport for remote rsyslog: `udp` or `tcp` |
+| `SYSLOG_FACILITY` | `local0` | Syslog facility |
+| `SYSLOG_TAG` | `pi-vpn-pooler` | Syslog program name / ident |
+| `SYSLOG_LEVEL` | `INFO` | Minimum level forwarded: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Set to `DEBUG` to capture full HTTP request/response packets against the privacyIDEA API. |
 
 ### Database
 
@@ -436,6 +443,51 @@ docker compose -f docker-compose.dev.yaml logs db
 Common issues:
 - PostgreSQL not ready yet (the healthcheck handles this, but first start takes ~10s)
 - Port 5000 already in use — change `VPN_POOLER_PORT` in the environment
+
+---
+
+## Logging and syslog
+
+Console logging (stdout) is always on. Remote rsyslog forwarding is opt-in via `SYSLOG_ENABLED=true` + a `SYSLOG_HOST`. Everything is configurable via the `SYSLOG_*` environment variables described in the [Django env vars](#django) table above. Defaults: transport `udp`, port `514`, level `INFO`.
+
+### Two log tiers
+
+| Level | What you get |
+|-------|--------------|
+| `INFO` (default) | One-line operational events: login success/failure, logout, pool create/delete, IP allocate/release, sync start/complete, PI API errors. Safe for production. |
+| `DEBUG` | Everything at INFO, plus full HTTP request/response packet dumps for every privacyIDEA API call (see below). Verbose — intended for troubleshooting. |
+
+### Full-packet DEBUG dumps
+
+With `SYSLOG_LEVEL=DEBUG` (or `DJANGO_DEBUG=true`), the `PIClient` logs full-packet dumps for every call to the privacyIDEA API:
+
+| Log prefix | Source | When |
+|------------|--------|------|
+| `PI HTTP >>> <method> <url> headers=… params=… body=…` | Outbound HTTP request | Before `requests.request()` |
+| `PI HTTP <<< <status> <reason> headers=… body=…` | Inbound HTTP response | After `requests.request()` |
+
+### Secret redaction (always on)
+
+Packet dumps are **redacted by default** — this is not a toggle. The `PIClient` strips values of any attribute, header, URL param, or JSON field whose name (case-insensitive) contains:
+
+`password`, `pass`, `authorization`, `cookie`, `token`, `secret`, `pi-authorization`
+
+Matched values are replaced with `***` before the message is emitted. JSON response bodies are parsed and redacted recursively; bodies that fail to parse are logged verbatim.
+
+### Quick test
+
+Start a UDP listener on the host and configure the env:
+
+```
+nc -u -l 1514
+```
+
+```env
+SYSLOG_ENABLED=true
+SYSLOG_HOST=host.docker.internal
+SYSLOG_PORT=1514
+SYSLOG_LEVEL=DEBUG
+```
 
 ---
 

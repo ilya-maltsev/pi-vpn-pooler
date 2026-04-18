@@ -61,6 +61,8 @@ def create_pool(name, cidr, attr_key, description='', gateway_ip=None):
         description=description,
         gateway_ip=gateway_ip or None,
     )
+    log.info('Pool created name=%s cidr=%s attr_key=%s gateway=%s',
+             pool.name, pool.cidr, pool.attr_key, pool.gateway_ip or '-')
     return pool
 
 
@@ -72,7 +74,9 @@ def delete_pool(pool_id):
             f'Cannot delete pool "{pool.name}": it still has {pool.allocations.count()} allocation(s). '
             f'Release all IPs first.'
         )
+    name, cidr = pool.name, pool.cidr
     pool.delete()
+    log.info('Pool deleted name=%s cidr=%s', name, cidr)
 
 
 def get_pool_stats(pool):
@@ -102,6 +106,8 @@ def allocate_ip(session, pool_id, username, realm, ip_address=None):
     """Allocate an IP from pool to user.  If ip_address is None, picks next free."""
     pool = VpnPool.objects.get(pk=pool_id)
     client = get_pi_client(session)
+    log.debug('Allocate requested pool=%s user=%s@%s requested_ip=%s',
+              pool.name, username, realm, ip_address or 'auto')
 
     # Determine IP
     if ip_address:
@@ -110,8 +116,10 @@ def allocate_ip(session, pool_id, username, realm, ip_address=None):
     else:
         free = get_free_ips(pool, limit=1)
         if not free:
+            log.warning('Allocate failed pool=%s: no free IPs', pool.name)
             raise PoolServiceError(f'No free IPs in pool "{pool.name}"')
         ip_address = free[0]
+        log.debug('Picked next free ip=%s from pool=%s', ip_address, pool.name)
 
     # Local uniqueness check
     existing = Allocation.objects.filter(ip_address=ip_address).first()
@@ -159,6 +167,8 @@ def allocate_ip(session, pool_id, username, realm, ip_address=None):
         realm=realm,
         attr_key=pool.attr_key,
     )
+    log.info('IP allocated ip=%s user=%s@%s pool=%s attr=%s',
+             ip_address, username, realm, pool.name, pool.attr_key)
     return alloc
 
 
@@ -176,7 +186,9 @@ def release_ip(session, pool_id, ip_address):
         raise PoolServiceError(f'privacyIDEA error: {e}')
 
     session['pi_token'] = client._token
+    username, realm, pool_name = alloc.username, alloc.realm, alloc.pool.name
     alloc.delete()
+    log.info('IP released ip=%s user=%s@%s pool=%s', ip_address, username, realm, pool_name)
 
 
 # --- sync --------------------------------------------------------------------
@@ -185,16 +197,19 @@ def full_sync(session):
     """Sync allocation cache with actual PI state."""
     sync_log = SyncLog.objects.create()
     client = get_pi_client(session)
+    log.info('Full sync started')
 
     try:
         realms = client.get_realms()
         pools = {p.attr_key: p for p in VpnPool.objects.all()}
         pool_cidrs = {p.attr_key: p.cidr for p in pools.values()}
+        log.debug('Sync scanning %d realm(s) against %d pool(s)', len(realms), len(pools))
 
         found_allocations = []
 
         for realm in realms:
             users = client.get_users(realm)
+            log.debug('Sync realm=%s scanning %d user(s)', realm, len(users))
             for user in users:
                 username = user.get('username', '')
                 if not username:
@@ -225,6 +240,7 @@ def full_sync(session):
 
         sync_log.status = 'success'
         sync_log.details = f'Found {len(found_allocations)} allocation(s) across {len(realms)} realm(s)'
+        log.info('Full sync complete: %s', sync_log.details)
 
     except Exception as e:
         sync_log.status = 'error'

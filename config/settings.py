@@ -1,4 +1,6 @@
+import logging.handlers
 import os
+import socket
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -88,17 +90,49 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 PI_API_URL = os.environ.get('PI_API_URL', 'https://localhost:8443')
 PI_VERIFY_SSL = os.environ.get('PI_VERIFY_SSL', 'false').lower() in ('true', '1', 'yes')
 
+# --- Logging -----------------------------------------------------------------
+# Console is always on. Remote rsyslog forwarding is opt-in via SYSLOG_ENABLED.
+# Defaults: UDP, port 514, INFO level.
+SYSLOG_ENABLED = os.environ.get('SYSLOG_ENABLED', 'false').lower() in ('true', '1', 'yes')
+SYSLOG_HOST = os.environ.get('SYSLOG_HOST', '')
+SYSLOG_PORT = int(os.environ.get('SYSLOG_PORT', '514'))
+SYSLOG_PROTO = os.environ.get('SYSLOG_PROTO', 'udp').lower()
+SYSLOG_FACILITY = os.environ.get('SYSLOG_FACILITY', 'local0')
+SYSLOG_TAG = os.environ.get('SYSLOG_TAG', 'pi-vpn-pooler')
+SYSLOG_LEVEL = os.environ.get('SYSLOG_LEVEL', 'INFO').upper()
+
+_pooler_handlers = ['console']
+_logging_handlers = {
+    'console': {
+        'class': 'logging.StreamHandler',
+    },
+}
+
+if SYSLOG_ENABLED and SYSLOG_HOST:
+    _logging_handlers['syslog'] = {
+        'level': SYSLOG_LEVEL,
+        'class': 'logging.handlers.SysLogHandler',
+        'address': (SYSLOG_HOST, SYSLOG_PORT),
+        'socktype': (socket.SOCK_STREAM if SYSLOG_PROTO == 'tcp'
+                     else socket.SOCK_DGRAM),
+        'facility': logging.handlers.SysLogHandler.facility_names.get(
+            SYSLOG_FACILITY, logging.handlers.SysLogHandler.LOG_LOCAL0),
+        'formatter': 'syslog',
+    }
+    _pooler_handlers.append('syslog')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
+    'formatters': {
+        'syslog': {
+            'format': SYSLOG_TAG + ': [%(levelname)s] %(name)s: %(message)s',
         },
     },
+    'handlers': _logging_handlers,
     'loggers': {
         'pooler': {
-            'handlers': ['console'],
+            'handlers': _pooler_handlers,
             'level': os.environ.get('DJANGO_LOG_LEVEL', 'INFO'),
         },
     },

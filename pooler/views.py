@@ -27,20 +27,26 @@ def login_view(request):
         if not username or not password:
             messages.error(request, 'Username and password are required.')
             return render(request, 'pooler/login.html')
+        log.debug('Login attempt user=%s from %s', username,
+                  request.META.get('REMOTE_ADDR', '?'))
         client = PIClient()
         try:
             token = client.authenticate(username, password)
             request.session['pi_token'] = token
             request.session['pi_username'] = username
             request.session['pi_password'] = password
+            log.info('Login success user=%s', username)
             return redirect('dashboard')
         except PIClientError as e:
+            log.warning('Login failed user=%s: %s', username, e)
             messages.error(request, f'Authentication failed: {e}')
     return render(request, 'pooler/login.html')
 
 
 def logout_view(request):
+    username = request.session.get('pi_username', '?')
     request.session.flush()
+    log.info('Logout user=%s', username)
     return redirect('login')
 
 
