@@ -1,0 +1,42 @@
+{% load i18n %}
+<div class="topbar">
+    <div class="crumbs">
+        {% include 'pooler/_icon.html' with name='network' %}
+        <a href="{% url 'dashboard' %}" class="ghost">pooler</a>
+        {% block crumbs %}
+            {% if page == 'dashboard' %}<span class="sep">/</span><span class="cur">{% trans "Overview" %}</span>
+            {% elif page == 'pools' %}<span class="sep">/</span><span class="cur">{% trans "Pools" %}</span>
+            {% elif page == 'pool_detail' %}<span class="sep">/</span><a href="{% url 'pool_list' %}" class="ghost">{% trans "Pools" %}</a><span class="sep">/</span><span class="cur mono">{{ pool.name }}</span>
+            {% elif page == 'pool_new' %}<span class="sep">/</span><a href="{% url 'pool_list' %}" class="ghost">{% trans "Pools" %}</a><span class="sep">/</span><span class="cur">{% trans "New" %}</span>
+            {% elif page == 'pool_edit' %}<span class="sep">/</span><a href="{% url 'pool_list' %}" class="ghost">{% trans "Pools" %}</a><span class="sep">/</span><a href="{% url 'pool_detail' pool.pk %}" class="ghost mono">{{ pool.name }}</a><span class="sep">/</span><span class="cur">{% trans "Edit" %}</span>
+            {% elif page == 'allocations' %}<span class="sep">/</span><span class="cur">{% trans "Allocations" %}</span>
+            {% elif page == 'sync' %}<span class="sep">/</span><span class="cur">{% trans "Sync" %}</span>
+            {% endif %}
+        {% endblock %}
+    </div>
+    <div class="spacer"></div>
+
+    <span class="env-pill"><span class="dot"></span>pi.corp.local</span>
+
+    <button type="button" class="search" data-action="open-palette">
+        {% include 'pooler/_icon.html' with name='search' %}
+        <span>{% trans "Search…" %}</span>
+        <span class="kbd">⌘K</span>
+    </button>
+
+    <form action="{% url 'set_language' %}" method="post" class="lang-switch">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        {% get_current_language as CUR %}
+        {% get_available_languages as LANGS %}
+        {% for code, name in LANGS %}
+            <button type="submit" name="language" value="{{ code }}" class="lang-btn {% if code == CUR %}on{% endif %}">{{ code|upper }}</button>
+        {% endfor %}
+    </form>
+
+    {% if pi_authenticated %}
+    <a href="{% url 'logout' %}" class="btn ghost icon-only" title="{% trans 'Logout' %}">
+        {% include 'pooler/_icon.html' with name='logout' %}
+    </a>
+    {% endif %}
+</div>

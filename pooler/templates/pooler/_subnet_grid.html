@@ -1,0 +1,16 @@
+{% load static %}
+<div class="subnet-viz"
+     data-total="{{ total }}"
+     data-gateway="{{ gateway_idx|default:'' }}"
+     data-used="{{ used_indices_json|default:'[]' }}"
+     data-compact="{% if compact %}1{% else %}0{% endif %}"
+     data-max="{{ max_cells|default:1024 }}">
+  <noscript>
+    <span class="sub" style="padding:6px;display:block;color:var(--mut);font-family:var(--mono);font-size:11px;">
+      {{ used_count }} / {{ total }} used
+    </span>
+  </noscript>
+</div>
+{% if total > max_cells|default:1024 %}
+<div class="subnet-viz-note">Showing first {{ max_cells|default:1024 }} of {{ total }}</div>
+{% endif %}

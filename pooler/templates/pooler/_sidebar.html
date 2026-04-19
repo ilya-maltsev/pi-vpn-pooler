@@ -1,0 +1,62 @@
+{% load static i18n %}
+<aside class="side">
+    <div class="side-brand">
+        <div class="brand-mark">
+            <svg width="16" height="16" aria-hidden="true"><use href="{% static 'pooler/icons.svg' %}#brand"/></svg>
+        </div>
+        <div class="brand-text">
+            VPN Pooler
+            <span class="brand-sub">privacyIDEA · v2</span>
+        </div>
+    </div>
+
+    <nav class="side-nav">
+        <button type="button" class="side-link" data-action="open-palette" style="margin-bottom:6px;" title="{% trans 'Quick search' %}">
+            {% include 'pooler/_icon.html' with name='search' %}
+            <span class="side-label">{% trans "Quick search" %}</span>
+            <span class="kbd">⌘K</span>
+        </button>
+
+        <div class="side-section">{% trans "Monitor" %}</div>
+        <a href="{% url 'dashboard' %}" class="side-link {% if page == 'dashboard' %}active{% endif %}" title="{% trans 'Overview' %}">
+            {% include 'pooler/_icon.html' with name='dashboard' %}
+            <span class="side-label">{% trans "Overview" %}</span>
+        </a>
+
+        <div class="side-section">{% trans "Network" %}</div>
+        <a href="{% url 'pool_list' %}" class="side-link {% if page == 'pools' %}active{% endif %}" title="{% trans 'Pools' %}">
+            {% include 'pooler/_icon.html' with name='pools' %}
+            <span class="side-label">{% trans "Pools" %}</span>
+            {% if pool_count is not None %}<span class="count">{{ pool_count }}</span>{% endif %}
+        </a>
+        <a href="{% url 'allocation_list' %}" class="side-link {% if page == 'allocations' %}active{% endif %}" title="{% trans 'Allocations' %}">
+            {% include 'pooler/_icon.html' with name='network' %}
+            <span class="side-label">{% trans "Allocations" %}</span>
+            {% if alloc_count is not None %}<span class="count">{{ alloc_count }}</span>{% endif %}
+        </a>
+        <a href="{% url 'pool_create' %}" class="side-link {% if page == 'pool_new' %}active{% endif %}" title="{% trans 'New pool' %}">
+            {% include 'pooler/_icon.html' with name='plus' %}
+            <span class="side-label">{% trans "New pool" %}</span>
+        </a>
+
+        <div class="side-section">{% trans "System" %}</div>
+        <a href="{% url 'sync' %}" class="side-link {% if page == 'sync' %}active{% endif %}" title="{% trans 'Sync' %}">
+            {% include 'pooler/_icon.html' with name='sync' %}
+            <span class="side-label">{% trans "Sync" %}</span>
+        </a>
+        <button type="button" class="side-link" data-action="toggle-sidebar" title="{% trans 'Collapse' %}">
+            {% include 'pooler/_icon.html' with name='menu' %}
+            <span class="side-label">{% trans "Collapse" %}</span>
+        </button>
+    </nav>
+
+    {% if pi_authenticated %}
+    <div class="side-foot">
+        <div class="avatar">{{ pi_username|first|upper|default:'?' }}</div>
+        <div class="meta">
+            <b>{{ pi_username|default:'—' }}</b>
+            <span>pi.corp.local</span>
+        </div>
+    </div>
+    {% endif %}
+</aside>

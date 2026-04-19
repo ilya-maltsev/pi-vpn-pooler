@@ -17,9 +17,13 @@ privacyIDEA codebase**.
 - **Multiple addresses** — a user can have IPs from different pools (e.g. `VPN1-IP`, `VPN2-IP`)
 - **Release** — free an IP and remove the custom attribute from privacyIDEA
 - **Sync** — rebuild local allocation cache from the actual privacyIDEA state
-- **Dashboard** — pool utilisation cards with progress bars
-- **DataTables** — sortable, filterable allocation tables
-- **User autocomplete** — realm-aware username lookup via PI API
+- **Dashboard** — stats row, pool cards with subnet-grid visualisation, recent allocations, pool health
+- **Subnet map** — per-pool grid, one cell per host (`gateway` in warn, `used` in accent, free in surface)
+- **Cross-pool allocations view** — search, pool filter, pager
+- **Sortable + filterable tables** — native (no DataTables), per-column filter inputs
+- **Command palette** — `⌘K` / `Ctrl+K` / `/` opens; `g o / g p / g a / g s` jumps to screens
+- **Copy-on-click** — IP / CIDR / gateway cells flash "✓ copied" on click
+- **Dark + light themes** — token-based, oklch accents, persisted in localStorage
 - **i18n** — Russian / English
 
 ---
@@ -56,9 +60,10 @@ the PI REST API (`POST /user/attribute`, `DELETE /user/attribute/…`).
 | Frontend | Server-side Jinja2-style Django templates |
 | WSGI server | Gunicorn (production) |
 | Reverse proxy | Nginx 1.27 with self-signed TLS (production) |
-| CSS | Custom framework (CSS variables, no Bootstrap) |
-| Tables | jQuery 3.7 + DataTables (per-column filtering) |
-| Icons | Font Awesome 4 |
+| CSS | Token-based design system (oklch accents, dark default + light theme), no Bootstrap / Tailwind |
+| Tables | Native — server-rendered + vanilla JS for sort/filter (`static/pooler/table.js`) |
+| Icons | Inline SVG sprite (`static/pooler/icons.svg`) with `<use href="#name"/>` |
+| Client JS | ~1 kB each — `app.js`, `palette.js`, `table.js`, `subnet.js`, `toast.js`. No jQuery, no React. |
 | Static files | WhiteNoise (dev), Nginx (production) |
 | Containerisation | Docker, Docker Compose |
 | Build tool | GNU Make |
@@ -275,17 +280,32 @@ pi-vpn-pooler/
 │   ├── migrations/
 │   │   └── 0001_initial.py
 │   ├── templates/pooler/
-│   │   ├── base.html               # Layout (sidebar + topbar)
-│   │   ├── login.html
-│   │   ├── dashboard.html
-│   │   ├── pool_list.html
-│   │   ├── pool_detail.html        # Allocations + allocate form
+│   │   ├── base.html               # Layout (sidebar + topbar + palette slot)
+│   │   ├── _sidebar.html           # Left rail nav with section counts
+│   │   ├── _topbar.html            # Crumbs, env pill, search button, lang switch, logout
+│   │   ├── _palette.html           # Command-palette mount point + JSON payload
+│   │   ├── _badge.html             # Badge primitive (tones: accent/ok/warn/bad)
+│   │   ├── _progress.html          # Thin 3px linear bar (auto-tones on pct)
+│   │   ├── _status_dot.html        # 6px status dot with soft ring
+│   │   ├── _subnet_grid.html       # Subnet-map host grid (rendered client-side)
+│   │   ├── _icon.html              # <use href="#name"/> wrapper for the SVG sprite
+│   │   ├── login.html              # Minimal sign-in card (reuses the same token palette)
+│   │   ├── dashboard.html          # Overview: stats + pool cards + recent + health
+│   │   ├── pool_list.html          # Sortable + per-column filter table
+│   │   ├── pool_detail.html        # Stats + subnet map + details + allocate + allocations
 │   │   ├── pool_form.html          # Create / edit pool
-│   │   └── sync.html               # Sync history
+│   │   ├── allocation_list.html    # Cross-pool search + pager
+│   │   └── sync.html               # Two-up last/schedule + history
 │   └── static/pooler/
-│       ├── style.css               # Custom CSS (CSS variables)
-│       └── vendor/                 # jQuery, DataTables, Font Awesome
-└── locale/                         # i18n translations (ru, en)
+│       ├── style.css               # Token-based design system
+│       ├── icons.svg               # SVG sprite (lucide-style, 1.6 stroke)
+│       ├── app.js                  # Sidebar toggle, g-chords, confirm modal, copy-on-click
+│       ├── palette.js              # ⌘K command palette
+│       ├── table.js                # Sortable headers + per-column filter
+│       ├── subnet.js               # Subnet-grid cell renderer
+│       └── toast.js                # Promotes Django messages to toasts
+├── locale/                         # i18n translations (ru, en)
+└── view_helpers.py                 # subnet/palette/counts context builders
 ```
 
 ---

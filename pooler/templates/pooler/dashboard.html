@@ -1,47 +1,169 @@
 {% extends "pooler/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Dashboard" %} — VPN Pooler{% endblock %}
-{% block page_title %}{% trans "Dashboard" %}{% endblock %}
+{% block title %}{% trans "Overview" %} — VPN Pooler{% endblock %}
 
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<div class="page-head">
     <div>
-        {% if last_sync %}
-        <span style="font-size:12px;color:var(--fi-text-muted)">
-            {% trans "Last sync" %}: {{ last_sync.started_at|date:"Y-m-d H:i" }}
-            — <span class="badge {% if last_sync.status == 'success' %}badge-on{% elif last_sync.status == 'error' %}badge-off{% else %}badge-warn{% endif %}">{{ last_sync.status }}</span>
-        </span>
-        {% endif %}
+        <h1 class="page-title">{% trans "Overview" %}
+            <span class="mono-sub">{{ pool_count }} {% trans "pools" %} · {{ totals.total }} {% trans "hosts" %}</span>
+        </h1>
+        <div class="page-sub">
+            {% if last_sync %}
+                {% trans "Last sync" %} <span class="mono">{{ last_sync.started_at|date:"Y-m-d H:i" }}</span>
+                {% if last_sync.status == 'success' %}· {% include 'pooler/_badge.html' with tone='ok' text='ok' dot=True %}
+                {% else %}· {% include 'pooler/_badge.html' with tone='bad' text=last_sync.status dot=True %}{% endif %}
+            {% else %}
+                {% trans "No sync recorded yet" %}
+            {% endif %}
+        </div>
     </div>
-    <form method="post" action="{% url 'sync' %}" style="display:inline">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-default">
-            <i class="fa fa-refresh"></i> {% trans "Sync Now" %}
-        </button>
-    </form>
+    <div class="page-actions">
+        <a class="btn ghost" href="{% url 'sync' %}">
+            {% include 'pooler/_icon.html' with name='clock' %}
+            <span>{% trans "History" %}</span>
+        </a>
+        <form method="post" action="{% url 'sync' %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="btn accent">
+                {% include 'pooler/_icon.html' with name='sync' %}
+                <span>{% trans "Sync now" %}</span>
+            </button>
+        </form>
+    </div>
 </div>
 
-{% if pool_data %}
-<div class="cards">
-    {% for item in pool_data %}
-    <a href="{% url 'pool_detail' pk=item.pool.pk %}" class="card" style="text-decoration:none;color:inherit">
-        <div class="card-label">{{ item.pool.name }}</div>
-        <div class="card-value">{{ item.allocated }} / {{ item.total }}</div>
-        <div class="card-sub">{{ item.pool.cidr }} &middot; {{ item.free }} {% trans "free" %}</div>
-        <div class="progress-bar">
-            <div class="progress-bar-fill {% if item.percent < 60 %}low{% elif item.percent < 85 %}mid{% else %}high{% endif %}"
-                 style="width:{{ item.percent }}%"></div>
-        </div>
-    </a>
-    {% endfor %}
-</div>
-{% else %}
-<div class="panel">
-    <div class="panel-body" style="text-align:center;padding:40px;color:var(--fi-text-muted)">
-        <p style="font-size:16px;margin-bottom:12px">{% trans "No VPN pools configured" %}</p>
-        <a href="{% url 'pool_create' %}" class="btn btn-primary">{% trans "Create First Pool" %}</a>
+<!-- stats row -->
+<div class="stats">
+    <div class="stat">
+        <div class="stat-label">{% trans "Allocated" %}</div>
+        <div class="stat-value">{{ totals.allocated }}</div>
+        <div class="stat-delta flat">{% trans "across" %} {{ pool_count }} {% trans "pools" %}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">{% trans "Capacity" %}</div>
+        <div class="stat-value">{{ totals.total }}</div>
+        <div class="stat-delta flat">{% trans "usable hosts" %}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">{% trans "Utilization" %}</div>
+        <div class="stat-value">{{ totals.percent }}<span style="color:var(--mut-2);font-size:14px">%</span></div>
+        {% include 'pooler/_progress.html' with pct=totals.percent %}
+    </div>
+    <div class="stat">
+        <div class="stat-label">{% trans "Free" %}</div>
+        <div class="stat-value">{{ totals.free }}</div>
+        <div class="stat-delta flat">{% trans "ready to allocate" %}</div>
     </div>
 </div>
-{% endif %}
+
+<!-- pool grid -->
+<div class="card">
+    <div class="card-head">
+        <h3>{% trans "Pools" %}</h3>
+        <div class="actions">
+            <div class="legend">
+                <span><span class="sw" style="background:var(--accent)"></span>{% trans "used" %}</span>
+                <span><span class="sw" style="background:var(--warn)"></span>{% trans "gateway" %}</span>
+                <span><span class="sw" style="background:var(--bg-3);border:1px solid var(--line)"></span>{% trans "free" %}</span>
+            </div>
+            <a class="btn sm accent" href="{% url 'pool_create' %}">
+                {% include 'pooler/_icon.html' with name='plus' %}
+                <span>{% trans "New pool" %}</span>
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if pool_data %}
+        <div class="pool-grid">
+            {% for p in pool_data %}
+            <a class="pool-card" href="{% url 'pool_detail' p.pool.pk %}">
+                <div class="row">
+                    <div class="name">
+                        {% include 'pooler/_status_dot.html' with tone='ok' %}
+                        {{ p.pool.name }}
+                    </div>
+                    {% include 'pooler/_badge.html' with tone='accent' text=p.pool.attr_key %}
+                </div>
+                <div class="cidr">{{ p.pool.cidr }}</div>
+                {% include 'pooler/_subnet_grid.html' with total=p.total gateway_idx=p.gateway_idx used_indices_json=p.used_indices_json used_count=p.used_count max_cells=p.max_cells compact=True %}
+                <div class="row">
+                    <div class="big">{{ p.allocated }}<span class="of"> / {{ p.total }}</span></div>
+                    <div style="text-align:right">
+                        <div style="font-family:var(--mono);font-size:14px;font-weight:500">{{ p.percent }}%</div>
+                        <div class="foot" style="justify-content:flex-end">{{ p.free }} {% trans "free" %}</div>
+                    </div>
+                </div>
+                {% include 'pooler/_progress.html' with pct=p.percent %}
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="padding:40px;text-align:center;color:var(--mut)">
+            <p>{% trans "No pools yet." %}</p>
+            <a class="btn accent" href="{% url 'pool_create' %}">
+                {% include 'pooler/_icon.html' with name='plus' %}
+                <span>{% trans "Create first pool" %}</span>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- two-up -->
+<div class="grid-2" style="margin-top:16px">
+    <!-- recent allocations -->
+    <div class="card">
+        <div class="card-head">
+            <h3>{% trans "Recent allocations" %}</h3>
+            <a class="sub" href="{% url 'allocation_list' %}">{% trans "view all" %} →</a>
+        </div>
+        <div class="card-body" style="padding:0">
+            {% if recent_alloc %}
+            <table class="tbl" style="font-size:12px">
+                <tbody>
+                {% for a in recent_alloc %}
+                <tr>
+                    <td class="mono">{{ a.ip_address }}</td>
+                    <td>{{ a.username }}<span class="mut">@{{ a.realm }}</span></td>
+                    <td class="right" style="color:var(--mut)">
+                        <a href="{% url 'pool_detail' a.pool.pk %}" style="color:var(--mut)">{{ a.pool.name }}</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="padding:16px;color:var(--mut);font-size:12px">{% trans "No allocations yet." %}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- pool health -->
+    <div class="card">
+        <div class="card-head">
+            <h3>{% trans "Pool health" %}</h3>
+        </div>
+        <div class="card-body" style="padding:12px 16px">
+            {% for p in pool_data %}
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 0;{% if not forloop.last %}border-bottom:1px solid var(--line);{% endif %}">
+                {% if p.percent >= 85 %}{% include 'pooler/_status_dot.html' with tone='bad' %}
+                {% elif p.percent >= 60 %}{% include 'pooler/_status_dot.html' with tone='warn' %}
+                {% else %}{% include 'pooler/_status_dot.html' with tone='ok' %}{% endif %}
+                <div style="min-width:0;flex:1">
+                    <div style="font-size:12.5px;font-weight:500">{{ p.pool.name }}</div>
+                    <div class="mono mut" style="font-size:11px">{{ p.pool.cidr }}</div>
+                </div>
+                <div style="text-align:right;min-width:100px">
+                    <div class="mono" style="font-size:12px">{{ p.allocated }}<span style="color:var(--mut-2)"> / {{ p.total }}</span> <span class="mut">· {{ p.percent }}%</span></div>
+                    <div style="margin-top:4px">{% include 'pooler/_progress.html' with pct=p.percent %}</div>
+                </div>
+            </div>
+            {% empty %}
+            <div style="color:var(--mut);font-size:12px">{% trans "No pools to report." %}</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
 {% endblock %}

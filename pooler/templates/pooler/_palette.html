@@ -1,0 +1,4 @@
+{% load i18n %}
+{# Command palette — built from server-rendered JSON; palette.js handles key/mouse. #}
+<template id="palette-data">{{ palette_json|safe }}</template>
+<div id="palette-root" hidden></div>

@@ -1,48 +1,55 @@
 {% extends "pooler/base.html" %}
 {% load i18n %}
 
-{% block title %}{% if editing %}{% trans "Edit Pool" %}{% else %}{% trans "Create Pool" %}{% endif %} — VPN Pooler{% endblock %}
-{% block page_title %}{% if editing %}{% trans "Edit Pool" %}: {{ pool.name }}{% else %}{% trans "Create Pool" %}{% endif %}{% endblock %}
+{% block title %}{% if editing %}{% trans "Edit pool" %}{% else %}{% trans "New pool" %}{% endif %} — VPN Pooler{% endblock %}
 
 {% block content %}
-<div class="panel">
-    <div class="panel-header">{% if editing %}{% trans "Edit Pool" %}{% else %}{% trans "New VPN Pool" %}{% endif %}</div>
-    <div class="panel-body">
+<a href="{% url 'pool_list' %}" class="back-link">
+    {% include 'pooler/_icon.html' with name='chevron-left' %}
+    <span>{% trans "Pools" %}</span>
+</a>
+
+<div class="page-head">
+    <h1 class="page-title">
+        {% if editing %}{% trans "Edit pool" %} <span class="mono-sub">{{ pool.name }}</span>
+        {% else %}{% trans "New pool" %}{% endif %}
+    </h1>
+</div>
+
+<div class="card" style="max-width:720px">
+    <div class="card-body">
         <form method="post">
             {% csrf_token %}
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 20px">
-                <div>
-                    <label for="name">{% trans "Pool Name" %}</label>
-                    <input type="text" id="name" name="name" value="{{ form.name|default:'' }}"
-                           {% if editing %}readonly style="background:#f0f0f0"{% endif %} required>
+            <div class="grid-2" style="gap:14px 16px">
+                <div class="field">
+                    <label>{% trans "Name" %}</label>
+                    <input class="input" name="name" value="{{ form.name|default:'' }}" required {% if editing %}readonly{% endif %} autofocus>
                 </div>
-                <div>
-                    <label for="cidr">{% trans "CIDR" %}</label>
-                    <input type="text" id="cidr" name="cidr" value="{{ form.cidr|default:'' }}"
-                           placeholder="172.20.50.0/24"
-                           {% if editing %}readonly style="background:#f0f0f0"{% endif %} required>
+                <div class="field">
+                    <label>{% trans "CIDR" %}</label>
+                    <input class="input mono" name="cidr" value="{{ form.cidr|default:'' }}" required placeholder="10.0.0.0/24" {% if editing %}readonly{% endif %}>
                 </div>
-                <div>
-                    <label for="attr_key">{% trans "Attribute Key (in PI)" %}</label>
-                    <input type="text" id="attr_key" name="attr_key" value="{{ form.attr_key|default:'' }}"
-                           placeholder="VPN1-IP"
-                           {% if editing %}readonly style="background:#f0f0f0"{% endif %} required>
+                <div class="field">
+                    <label>{% trans "Attribute key" %}</label>
+                    <input class="input mono" name="attr_key" value="{{ form.attr_key|default:'' }}" required placeholder="vpn_ip" {% if editing %}readonly{% endif %}>
                 </div>
-                <div>
-                    <label for="gateway_ip">{% trans "Gateway IP (excluded)" %}</label>
-                    <input type="text" id="gateway_ip" name="gateway_ip" value="{{ form.gateway_ip|default:'' }}"
-                           placeholder="{% trans 'Optional' %}">
+                <div class="field">
+                    <label>{% trans "Gateway" %} <span class="hint">({% trans "optional" %})</span></label>
+                    <input class="input mono" name="gateway_ip" value="{{ form.gateway_ip|default:'' }}" placeholder="10.0.0.1">
                 </div>
             </div>
-            <div style="margin-top:12px">
-                <label for="description">{% trans "Description" %}</label>
-                <textarea id="description" name="description" rows="2">{{ form.description|default:'' }}</textarea>
+            <div class="field" style="margin-top:14px">
+                <label>{% trans "Description" %}</label>
+                <textarea class="textarea" name="description">{{ form.description|default:'' }}</textarea>
             </div>
-            <div style="margin-top:16px;display:flex;gap:8px">
-                <button type="submit" class="btn btn-primary">
-                    {% if editing %}{% trans "Save" %}{% else %}{% trans "Create" %}{% endif %}
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                <a class="btn ghost" href="{% if editing %}{% url 'pool_detail' pool.pk %}{% else %}{% url 'pool_list' %}{% endif %}">
+                    {% trans "Cancel" %}
+                </a>
+                <button type="submit" class="btn accent" data-submit-required="name,cidr,attr_key">
+                    {% include 'pooler/_icon.html' with name='check' %}
+                    <span>{% if editing %}{% trans "Save changes" %}{% else %}{% trans "Create pool" %}{% endif %}</span>
                 </button>
-                <a href="{% if editing %}{% url 'pool_detail' pk=pool.pk %}{% else %}{% url 'pool_list' %}{% endif %}" class="btn btn-default">{% trans "Cancel" %}</a>
             </div>
         </form>
     </div>

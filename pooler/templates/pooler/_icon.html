@@ -1,0 +1,1 @@
+{# Usage: {% include 'pooler/_icon.html' with name='search' cls='ico' %} #}{% load static %}<svg class="{{ cls|default:'ico' }}" aria-hidden="true"><use href="{% static 'pooler/icons.svg' %}#{{ name }}"/></svg>

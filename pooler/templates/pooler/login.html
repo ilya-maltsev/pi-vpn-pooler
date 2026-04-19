@@ -4,20 +4,26 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% trans "Login" %} — VPN Pooler</title>
+    <title>{% trans "Sign in" %} — VPN Pooler</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'pooler/favicon.svg' %}">
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="{% static 'pooler/style.css' %}">
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-box">
-            <h2><span style="color:var(--fi-primary)">VPN</span>Pooler</h2>
-            <p style="text-align:center;font-size:12px;color:var(--fi-text-muted);margin-bottom:20px">
-                {% trans "Sign in with your privacyIDEA admin account" %}
-            </p>
+    <div class="login-wrap">
+        <div class="login-card">
+            <div style="display:flex;justify-content:center;margin-bottom:8px">
+                <div class="brand-mark" style="width:36px;height:36px">
+                    <svg width="20" height="20" aria-hidden="true"><use href="{% static 'pooler/icons.svg' %}#brand"/></svg>
+                </div>
+            </div>
+            <h2>VPN Pooler</h2>
+            <div class="sub">{% trans "Sign in with your privacyIDEA admin account" %}</div>
             {% if messages %}
             <div class="messages">
                 {% for msg in messages %}
-                <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+                <div class="msg msg-{{ msg.tags }}"><span class="dot"></span>{{ msg }}</div>
                 {% endfor %}
             </div>
             {% endif %}
@@ -25,13 +31,13 @@
                 {% csrf_token %}
                 <div class="field">
                     <label for="username">{% trans "Username" %}</label>
-                    <input type="text" id="username" name="username" autofocus required>
+                    <input class="input" type="text" id="username" name="username" autofocus required>
                 </div>
                 <div class="field">
                     <label for="password">{% trans "Password" %}</label>
-                    <input type="password" id="password" name="password" required>
+                    <input class="input" type="password" id="password" name="password" required>
                 </div>
-                <button type="submit" class="btn btn-primary" style="margin-top:8px">{% trans "Login" %}</button>
+                <button type="submit" class="btn accent" style="width:100%;justify-content:center;margin-top:4px">{% trans "Sign in" %}</button>
             </form>
         </div>
     </div>

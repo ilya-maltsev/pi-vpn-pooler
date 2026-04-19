@@ -14,6 +14,7 @@ urlpatterns = [
     path('pools/<int:pk>/allocate/', views.allocate_view, name='allocate'),
     path('pools/<int:pk>/release/<str:ip>/', views.release_view, name='release'),
 
+    path('allocations/', views.allocation_list_view, name='allocation_list'),
     path('sync/', views.sync_view, name='sync'),
 
     # JSON API

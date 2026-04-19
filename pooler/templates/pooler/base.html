@@ -6,155 +6,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}VPN Pooler{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{% static 'pooler/favicon.svg' %}">
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="{% static 'pooler/style.css' %}">
-    <link rel="stylesheet" href="{% static 'pooler/vendor/datatables/jquery.dataTables.min.css' %}">
-    <link rel="stylesheet" href="{% static 'pooler/vendor/font-awesome/css/font-awesome.min.css' %}">
+    {% block head %}{% endblock %}
 </head>
 <body>
-    <nav class="sidebar">
-        <div class="sidebar-brand"><span>VPN</span>Pooler</div>
-        <button class="sidebar-toggle" id="sidebar-toggle" title="{% trans 'Collapse menu' %}">
-            <span class="toggle-collapse">&#8656;</span><span class="toggle-expand">&#8658;</span>
-        </button>
-
-        <div class="sidebar-section">{% trans "Monitor" %}</div>
-        <a href="{% url 'dashboard' %}" class="{% if page == 'dashboard' %}active{% endif %}" data-tooltip="{% trans 'Dashboard' %}">
-            <span class="icon"><i class="fa fa-tachometer"></i></span> <span class="sidebar-text">{% trans "Dashboard" %}</span>
-        </a>
-
-        <div class="sidebar-section">{% trans "VPN Pools" %}</div>
-        <a href="{% url 'pool_list' %}" class="{% if page == 'pools' %}active{% endif %}" data-tooltip="{% trans 'Pools' %}">
-            <span class="icon"><i class="fa fa-server"></i></span> <span class="sidebar-text">{% trans "Pools" %}</span>
-        </a>
-        <a href="{% url 'pool_create' %}" class="{% if page == 'pool_create' %}active{% endif %}" data-tooltip="{% trans 'Create Pool' %}">
-            <span class="icon"><i class="fa fa-plus-circle"></i></span> <span class="sidebar-text">{% trans "Create Pool" %}</span>
-        </a>
-
-        <div class="sidebar-section">{% trans "System" %}</div>
-        <a href="{% url 'sync' %}" class="{% if page == 'sync' %}active{% endif %}" data-tooltip="{% trans 'Sync' %}">
-            <span class="icon"><i class="fa fa-refresh"></i></span> <span class="sidebar-text">{% trans "Sync" %}</span>
-        </a>
-
-        <div class="lang-switch">
-            {% get_current_language as CURRENT_LANGUAGE %}
-            <form action="{% url 'set_language' %}" method="post">
-                {% csrf_token %}
-                <input type="hidden" name="next" value="{{ request.path }}">
-                {% get_available_languages as LANGUAGES %}
-                {% for lang_code, lang_name in LANGUAGES %}
-                <button type="submit" name="language" value="{{ lang_code }}"
-                    class="lang-btn {% if lang_code == CURRENT_LANGUAGE %}lang-active{% endif %}">
-                    {{ lang_code|upper }}
-                </button>
-                {% endfor %}
-            </form>
-        </div>
-
-        <div style="flex:1"></div>
-        {% if pi_authenticated %}
-        <div style="border-top:1px solid var(--fi-border);padding:8px 16px" class="sidebar-logout">
-            <a href="{% url 'logout' %}" style="color:var(--fi-error);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:6px">
-                <span>&#10140;</span> <span class="sidebar-text">{% trans "Logout" %} ({{ pi_username }})</span>
-            </a>
-        </div>
-        {% endif %}
-    </nav>
-
-    <div class="main">
-        <div class="topbar">
-            <h1>{% block page_title %}{% trans "Dashboard" %}{% endblock %}</h1>
-            <div class="meta">{% trans "VPN IP Pool Manager for privacyIDEA" %}</div>
-        </div>
-        <div class="content">
-            {% if messages %}
-            <div class="messages">
-                {% for msg in messages %}
-                <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
-                {% endfor %}
+    <div class="app">
+        {% include 'pooler/_sidebar.html' %}
+        <main class="main">
+            {% include 'pooler/_topbar.html' %}
+            <div class="content">
+                {% if messages %}
+                <div class="messages">
+                    {% for msg in messages %}
+                    <div class="msg msg-{{ msg.tags }}"><span class="dot"></span>{{ msg }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% block content %}{% endblock %}
             </div>
-            {% endif %}
-            {% block content %}{% endblock %}
-        </div>
+        </main>
     </div>
 
-    <!-- Confirm modal -->
-    <div id="confirm-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;background:rgba(0,0,0,0.5)">
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:4px;box-shadow:0 8px 30px rgba(0,0,0,0.3);width:420px;max-width:90%">
-            <div style="padding:20px 24px;border-bottom:1px solid var(--fi-border)">
-                <h3 id="confirm-title" style="font-size:16px;color:var(--fi-text);margin:0">{% trans "Confirmation" %}</h3>
-            </div>
-            <div style="padding:20px 24px">
-                <p id="confirm-message" style="font-size:14px;color:var(--fi-text);margin:0"></p>
-            </div>
-            <div style="padding:14px 24px;border-top:1px solid var(--fi-border);display:flex;justify-content:flex-end;gap:8px;background:#f8f9fa;border-radius:0 0 4px 4px">
-                <button id="confirm-cancel" class="btn btn-default">{% trans "Cancel" %}</button>
-                <button id="confirm-ok" class="btn btn-primary" style="background:var(--fi-error);border-color:var(--fi-error)">{% trans "Confirm" %}</button>
-            </div>
-        </div>
-    </div>
+    {% include 'pooler/_palette.html' %}
+    <div class="toasts" id="toasts"></div>
 
     <script>
+        // Restore sidebar collapse state before first paint.
         if (localStorage.getItem('sidebarCollapsed') === '1') {
-            document.body.classList.add('sidebar-collapsed');
+            document.body.classList.add('collapsed');
+        }
+        if (localStorage.getItem('theme') === 'light') {
+            document.body.classList.add('light');
         }
     </script>
-    <script src="{% static 'pooler/vendor/jquery/jquery-3.7.1.min.js' %}"></script>
-    <script src="{% static 'pooler/vendor/datatables/jquery.dataTables.min.js' %}"></script>
-    <script>
-        $('#sidebar-toggle').click(function() {
-            document.body.classList.toggle('sidebar-collapsed');
-            var collapsed = document.body.classList.contains('sidebar-collapsed');
-            localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
-        });
-
-        function showConfirm(message, callback, title) {
-            var $modal = $('#confirm-modal');
-            $('#confirm-title').text(title || '{% trans "Confirmation" %}');
-            $('#confirm-message').text(message);
-            $modal.fadeIn(150);
-            $('#confirm-cancel').off('click').on('click', function() { $modal.fadeOut(150); });
-            $('#confirm-ok').off('click').on('click', function() { $modal.fadeOut(150); callback(); });
-            $modal.off('click').on('click', function(e) { if (e.target === this) $modal.fadeOut(150); });
-        }
-
-        $(document).ready(function() {
-            $('.datatable').each(function() {
-                var $table = $(this);
-                var $headerRow = $table.find('thead tr');
-                var $filterRow = $('<tr class="col-filter-row"></tr>');
-                $headerRow.find('th').each(function() {
-                    $filterRow.append(
-                        '<th><div class="col-filter-wrap">' +
-                        '<input type="text" class="col-filter-input" placeholder="&#9660;">' +
-                        '</div></th>'
-                    );
-                });
-                $headerRow.after($filterRow);
-
-                var dt = $table.DataTable({
-                    pageLength: 25,
-                    order: [],
-                    orderCellsTop: true,
-                    language: {
-                        info: "{% trans 'Showing _START_ to _END_ of _TOTAL_ entries' %}",
-                        infoEmpty: "{% trans 'No entries' %}",
-                        zeroRecords: "{% trans 'No matching records found' %}",
-                        emptyTable: "{% trans 'No data available' %}",
-                        paginate: { previous: "{% trans 'Previous' %}", next: "{% trans 'Next' %}" }
-                    }
-                });
-
-                $filterRow.find('.col-filter-input').each(function(i) {
-                    $(this).on('keyup change', function() {
-                        var val = this.value.trim();
-                        var regex = val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        var col = dt.column(i);
-                        if (col.search() !== regex) col.search(regex, true, false).draw();
-                    });
-                });
-            });
-        });
-    </script>
+    <script defer src="{% static 'pooler/app.js' %}"></script>
+    <script defer src="{% static 'pooler/table.js' %}"></script>
+    <script defer src="{% static 'pooler/subnet.js' %}"></script>
+    <script defer src="{% static 'pooler/palette.js' %}"></script>
+    <script defer src="{% static 'pooler/toast.js' %}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

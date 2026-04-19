@@ -1,42 +1,82 @@
 {% extends "pooler/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "VPN Pools" %} — VPN Pooler{% endblock %}
-{% block page_title %}{% trans "VPN Pools" %}{% endblock %}
+{% block title %}{% trans "Pools" %} — VPN Pooler{% endblock %}
 
 {% block content %}
-<div style="margin-bottom:14px">
-    <a href="{% url 'pool_create' %}" class="btn btn-primary">
-        <i class="fa fa-plus"></i> {% trans "Create Pool" %}
-    </a>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{% trans "Pools" %}
+            <span class="mono-sub">{{ pool_data|length }} {% trans "total" %}</span>
+        </h1>
+    </div>
+    <div class="page-actions">
+        <a class="btn accent" href="{% url 'pool_create' %}">
+            {% include 'pooler/_icon.html' with name='plus' %}
+            <span>{% trans "New pool" %}</span>
+        </a>
+    </div>
 </div>
 
-<div class="table-wrap">
-    <table class="datatable">
-        <thead>
-            <tr>
-                <th>{% trans "Name" %}</th>
-                <th>{% trans "CIDR" %}</th>
-                <th>{% trans "Attribute Key" %}</th>
-                <th>{% trans "Allocated" %}</th>
-                <th>{% trans "Free" %}</th>
-                <th>{% trans "Usage" %}</th>
-                <th>{% trans "Description" %}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in pool_data %}
-            <tr style="cursor:pointer" onclick="window.location='{% url 'pool_detail' pk=item.pool.pk %}'">
-                <td><strong>{{ item.pool.name }}</strong></td>
-                <td>{{ item.pool.cidr }}</td>
-                <td><span class="badge badge-info">{{ item.pool.attr_key }}</span></td>
-                <td style="text-align:center">{{ item.allocated }}</td>
-                <td style="text-align:center">{{ item.free }}</td>
-                <td style="text-align:center">{{ item.percent }}%</td>
-                <td>{{ item.pool.description|default:"-" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="card">
+    <div class="card-body flush">
+        <div class="tbl-wrap">
+        <table class="tbl" data-sortable="1" data-filterable="1">
+            <thead>
+                <tr>
+                    <th class="sortable" data-key="name">{% trans "Name" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="cidr">{% trans "CIDR" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="attr_key">{% trans "Attribute" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable right" data-key="allocated" data-type="num">{% trans "Used" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable right" data-key="free" data-type="num">{% trans "Free" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="percent" data-type="num" style="width:160px">{% trans "Usage" %}<span class="sort-ico">↕</span></th>
+                    <th>{% trans "Description" %}</th>
+                    <th style="width:30px"></th>
+                </tr>
+                <tr class="filter-row">
+                    <th><input type="text" data-filter-col="0" placeholder="▾"></th>
+                    <th><input type="text" data-filter-col="1" placeholder="▾"></th>
+                    <th><input type="text" data-filter-col="2" placeholder="▾"></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th><input type="text" data-filter-col="6" placeholder="▾"></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in pool_data %}
+                <tr class="clickable" data-href="{% url 'pool_detail' p.pool.pk %}"
+                    data-name="{{ p.pool.name }}" data-cidr="{{ p.pool.cidr }}"
+                    data-attr_key="{{ p.pool.attr_key }}"
+                    data-allocated="{{ p.allocated }}" data-free="{{ p.free }}" data-percent="{{ p.percent }}">
+                    <td><div style="display:flex;align-items:center;gap:8px;font-weight:500">
+                        {% include 'pooler/_status_dot.html' with tone='ok' %}{{ p.pool.name }}
+                    </div></td>
+                    <td class="mono">{{ p.pool.cidr }}</td>
+                    <td>{% include 'pooler/_badge.html' with tone='accent' text=p.pool.attr_key %}</td>
+                    <td class="num">{{ p.allocated }}</td>
+                    <td class="num">{{ p.free }}</td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px">
+                            {% include 'pooler/_progress.html' with pct=p.percent %}
+                            <span class="mono" style="font-size:11.5px;color:var(--mut);min-width:34px;text-align:right">{{ p.percent }}%</span>
+                        </div>
+                    </td>
+                    <td class="wrap" style="color:var(--mut)">{{ p.pool.description|default:"—" }}</td>
+                    <td style="color:var(--mut-2)">
+                        {% include 'pooler/_icon.html' with name='chevron' %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" style="padding:24px;text-align:center;color:var(--mut)">{% trans "No pools yet." %}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div class="tbl-foot">
+        <div><span data-table-counter>{% trans "Showing" %} {{ pool_data|length }} {% trans "of" %} {{ pool_data|length }} {% trans "pools" %}</span></div>
+    </div>
 </div>
 {% endblock %}

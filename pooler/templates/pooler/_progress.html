@@ -1,0 +1,1 @@
+{% if tone %}<div class="prog {{ tone }}"><span style="width: {{ pct }}%"></span></div>{% elif pct >= 85 %}<div class="prog bad"><span style="width: {{ pct }}%"></span></div>{% elif pct >= 60 %}<div class="prog warn"><span style="width: {{ pct }}%"></span></div>{% else %}<div class="prog"><span style="width: {{ pct }}%"></span></div>{% endif %}

@@ -1,132 +1,186 @@
 {% extends "pooler/base.html" %}
 {% load i18n %}
 
-{% block title %}{{ pool.name }} — VPN Pooler{% endblock %}
-{% block page_title %}{% trans "Pool" %}: {{ pool.name }}{% endblock %}
+{% block title %}{{ pool.name }} — {% trans "Pool" %} — VPN Pooler{% endblock %}
 
 {% block content %}
-<!-- Pool info panel -->
-<div class="panel">
-    <div class="panel-header">{% trans "Pool Details" %}</div>
-    <div class="panel-body">
-        <div class="detail-row"><div class="detail-label">{% trans "Name" %}</div><div class="detail-value">{{ pool.name }}</div></div>
-        <div class="detail-row"><div class="detail-label">{% trans "CIDR" %}</div><div class="detail-value">{{ pool.cidr }}</div></div>
-        <div class="detail-row"><div class="detail-label">{% trans "Attribute Key" %}</div><div class="detail-value"><span class="badge badge-info">{{ pool.attr_key }}</span></div></div>
-        <div class="detail-row"><div class="detail-label">{% trans "Gateway" %}</div><div class="detail-value">{{ pool.gateway_ip|default:"-" }}</div></div>
-        <div class="detail-row"><div class="detail-label">{% trans "Description" %}</div><div class="detail-value">{{ pool.description|default:"-" }}</div></div>
-        <div class="detail-row">
-            <div class="detail-label">{% trans "Usage" %}</div>
-            <div class="detail-value">
-                {{ stats.allocated }} / {{ stats.total }} ({{ stats.percent }}%)
-                <div class="progress-bar" style="max-width:300px">
-                    <div class="progress-bar-fill {% if stats.percent < 60 %}low{% elif stats.percent < 85 %}mid{% else %}high{% endif %}"
-                         style="width:{{ stats.percent }}%"></div>
-                </div>
-            </div>
+<a href="{% url 'pool_list' %}" class="back-link">
+    {% include 'pooler/_icon.html' with name='chevron-left' %}
+    <span>{% trans "Pools" %}</span>
+</a>
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">
+            {% if stats.percent >= 85 %}{% include 'pooler/_status_dot.html' with tone='bad' %}
+            {% elif stats.percent >= 60 %}{% include 'pooler/_status_dot.html' with tone='warn' %}
+            {% else %}{% include 'pooler/_status_dot.html' with tone='ok' %}{% endif %}
+            {{ pool.name }}
+            <span class="mono-sub">{{ pool.cidr }}</span>
+        </h1>
+        {% if pool.description %}<div class="page-sub">{{ pool.description }}</div>{% endif %}
+    </div>
+    <div class="page-actions">
+        <a class="btn ghost" href="{% url 'pool_edit' pool.pk %}">
+            {% include 'pooler/_icon.html' with name='pencil' %}
+            <span>{% trans "Edit" %}</span>
+        </a>
+        <button type="button" class="btn danger" data-action="confirm"
+                data-title="{% trans 'Delete pool' %}"
+                data-message="{% blocktrans with n=pool.name %}Delete pool {{ n }}? This will fail if it has allocations.{% endblocktrans %}"
+                data-confirm-label="{% trans 'Delete' %}"
+                data-form-id="delete-pool-form">
+            {% include 'pooler/_icon.html' with name='trash' %}
+            <span>{% trans "Delete" %}</span>
+        </button>
+        <form id="delete-pool-form" method="post" action="{% url 'pool_delete' pool.pk %}" style="display:none">
+            {% csrf_token %}
+        </form>
+    </div>
+</div>
+
+<!-- stats row -->
+<div class="stats">
+    <div class="stat">
+        <div class="stat-label">{% trans "Allocated" %}</div>
+        <div class="stat-value">{{ stats.allocated }}</div>
+        <div>{% include 'pooler/_progress.html' with pct=stats.percent %}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">{% trans "Free" %}</div>
+        <div class="stat-value">{{ stats.free }}</div>
+        <div class="stat-delta flat">
+            {% if next_ip %}{% trans "next:" %} <span class="mono">{{ next_ip }}</span>{% else %}—{% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">{% trans "Utilization" %}</div>
+        <div class="stat-value">{{ stats.percent }}<span style="color:var(--mut-2);font-size:14px">%</span></div>
+        <div class="stat-delta flat">{{ stats.total }} {% trans "total" %}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">{% trans "Attribute" %}</div>
+        <div class="stat-value" style="font-size:15px;padding-top:4px">
+            {% include 'pooler/_badge.html' with tone='accent' text=pool.attr_key %}
+        </div>
+        <div class="stat-delta flat">
+            {% if pool.gateway_ip %}{% trans "gateway" %} <span class="mono">{{ pool.gateway_ip }}</span>{% else %}{% trans "no gateway" %}{% endif %}
         </div>
     </div>
 </div>
 
-<div style="display:flex;gap:8px;margin-bottom:20px">
-    <a href="{% url 'pool_edit' pk=pool.pk %}" class="btn btn-default"><i class="fa fa-pencil"></i> {% trans "Edit" %}</a>
-    <form method="post" action="{% url 'pool_delete' pk=pool.pk %}" style="display:inline" id="delete-form">
-        {% csrf_token %}
-        <button type="button" class="btn btn-error" onclick="showConfirm('{% trans "Delete this pool?" %}', function(){ document.getElementById('delete-form').submit(); })">
-            <i class="fa fa-trash"></i> {% trans "Delete" %}
-        </button>
-    </form>
+<!-- two-up: subnet map + details -->
+<div class="grid-2">
+    <div class="card">
+        <div class="card-head">
+            <h3>{% trans "Subnet map" %}</h3>
+            <span class="sub" data-subnet-label>{{ stats.allocated }} / {{ stats.total }}</span>
+        </div>
+        <div class="card-body">
+            {% include 'pooler/_subnet_grid.html' with total=total gateway_idx=gateway_idx used_indices_json=used_indices_json used_count=used_count max_cells=max_cells %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head"><h3>{% trans "Details" %}</h3></div>
+        <div class="card-body">
+            <dl class="detail-grid">
+                <dt>{% trans "Name" %}</dt><dd>{{ pool.name }}</dd>
+                <dt>{% trans "CIDR" %}</dt><dd><span class="mono" data-copy>{{ pool.cidr }}</span></dd>
+                <dt>{% trans "Attribute" %}</dt><dd>{% include 'pooler/_badge.html' with tone='accent' text=pool.attr_key %}</dd>
+                <dt>{% trans "Gateway" %}</dt><dd>{% if pool.gateway_ip %}<span class="mono" data-copy>{{ pool.gateway_ip }}</span>{% else %}<span class="mut">—</span>{% endif %}</dd>
+                <dt>{% trans "Created" %}</dt><dd class="mono">{{ pool.created_at|date:"Y-m-d H:i" }}</dd>
+                <dt>{% trans "Description" %}</dt><dd>{{ pool.description|default:"—" }}</dd>
+            </dl>
+        </div>
+    </div>
 </div>
 
-<!-- Allocate IP form -->
-<div class="panel">
-    <div class="panel-header">{% trans "Allocate IP Address" %}</div>
-    <div class="panel-body">
-        <form method="post" action="{% url 'allocate' pk=pool.pk %}">
+<!-- allocate -->
+<div class="card" style="margin-top:16px">
+    <div class="card-head">
+        <h3>{% trans "Allocate IP" %}</h3>
+        {% if next_ip %}<span class="sub">{% trans "next available" %} · <span class="mono">{{ next_ip }}</span></span>{% endif %}
+    </div>
+    <div class="card-body">
+        <form method="post" action="{% url 'allocate' pool.pk %}" class="grid-form">
             {% csrf_token %}
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 20px;align-items:end">
-                <div>
-                    <label for="realm">{% trans "Realm" %}</label>
-                    <select id="realm" name="realm" required>
-                        <option value="">— {% trans "Select realm" %} —</option>
-                        {% for r in realms %}
-                        <option value="{{ r }}">{{ r }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label for="username">{% trans "Username" %}</label>
-                    <input type="text" id="username" name="username" placeholder="{% trans 'Start typing...' %}" required autocomplete="off" list="user-suggestions">
-                    <datalist id="user-suggestions"></datalist>
-                </div>
-                <div>
-                    <label for="ip_address">{% trans "IP Address" %}</label>
-                    <select id="ip_address" name="ip_address">
-                        <option value="">{% trans "Next available" %}</option>
-                        {% for ip in free_ips %}
-                        <option value="{{ ip }}">{{ ip }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <button type="submit" class="btn btn-success" style="margin-bottom:0">
-                        <i class="fa fa-plus"></i> {% trans "Allocate" %}
-                    </button>
-                </div>
+            <div class="field">
+                <label>{% trans "Realm" %}</label>
+                <select name="realm" class="select" required>
+                    <option value="">{% trans "Select realm…" %}</option>
+                    {% for r in realms %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>{% trans "Username" %}</label>
+                <input type="text" name="username" class="input" required autocomplete="off">
+            </div>
+            <div class="field">
+                <label>{% trans "IP address" %}</label>
+                <select name="ip_address" class="select mono">
+                    <option value="">{% trans "Next available" %} {% if next_ip %}· {{ next_ip }}{% endif %}</option>
+                    {% for ip in free_ips %}<option value="{{ ip }}">{{ ip }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>&nbsp;</label>
+                <button type="submit" class="btn accent">
+                    {% include 'pooler/_icon.html' with name='plus' %}
+                    <span>{% trans "Allocate" %}</span>
+                </button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Allocations table -->
-<div class="table-wrap">
-    <table class="datatable">
-        <thead>
-            <tr>
-                <th>{% trans "IP Address" %}</th>
-                <th>{% trans "Username" %}</th>
-                <th>{% trans "Realm" %}</th>
-                <th>{% trans "Attribute" %}</th>
-                <th>{% trans "Synced" %}</th>
-                <th>{% trans "Actions" %}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for alloc in allocations %}
-            <tr>
-                <td><strong>{{ alloc.ip_address }}</strong></td>
-                <td>{{ alloc.username }}</td>
-                <td>{{ alloc.realm }}</td>
-                <td><span class="badge badge-info">{{ alloc.attr_key }}</span></td>
-                <td>{{ alloc.synced_at|date:"Y-m-d H:i" }}</td>
-                <td>
-                    <form method="post" action="{% url 'release' pk=pool.pk ip=alloc.ip_address %}" style="display:inline" id="release-{{ forloop.counter }}">
-                        {% csrf_token %}
-                        <button type="button" class="btn btn-error" style="padding:3px 10px;font-size:12px"
-                                onclick="showConfirm('{% trans "Release" %} {{ alloc.ip_address }} {% trans "from" %} {{ alloc.username }}?', function(){ document.getElementById('release-{{ forloop.counter }}').submit(); })">
-                            <i class="fa fa-times"></i> {% trans "Release" %}
+<!-- allocations table -->
+<div class="card" style="margin-top:16px">
+    <div class="card-head">
+        <h3>{% trans "Allocations" %}</h3>
+        <span class="sub">{{ allocations|length }}</span>
+    </div>
+    <div class="card-body flush">
+        <div class="tbl-wrap">
+        <table class="tbl" data-sortable="1">
+            <thead>
+                <tr>
+                    <th class="sortable" data-key="ip">{% trans "IP" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="username">{% trans "Username" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="realm">{% trans "Realm" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="attr">{% trans "Attribute" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="synced">{% trans "Synced" %}<span class="sort-ico">↕</span></th>
+                    <th style="width:120px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in allocations %}
+                <tr data-ip="{{ a.ip_address }}" data-username="{{ a.username }}" data-realm="{{ a.realm }}" data-attr="{{ a.attr_key }}" data-synced="{{ a.synced_at|date:'U' }}">
+                    <td><span class="mono" data-copy>{{ a.ip_address }}</span></td>
+                    <td>{{ a.username }}</td>
+                    <td>{{ a.realm }}</td>
+                    <td>{% include 'pooler/_badge.html' with tone='accent' text=a.attr_key %}</td>
+                    <td class="mono mut" style="font-size:11.5px">{{ a.synced_at|date:"Y-m-d H:i" }}</td>
+                    <td class="right">
+                        <button type="button" class="btn sm danger" data-action="confirm"
+                                data-title="{% trans 'Release IP' %}"
+                                data-message="{% blocktrans with ip=a.ip_address u=a.username r=a.realm %}Release {{ ip }} from {{ u }}@{{ r }}? The user attribute will also be removed in privacyIDEA.{% endblocktrans %}"
+                                data-confirm-label="{% trans 'Release' %}"
+                                data-form-id="release-{{ a.pk }}">
+                            {% include 'pooler/_icon.html' with name='trash' %}
+                            <span>{% trans "Release" %}</span>
                         </button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                        <form id="release-{{ a.pk }}" method="post" action="{% url 'release' pool.pk a.ip_address %}" style="display:none">
+                            {% csrf_token %}
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--mut)">{% trans "No allocations yet." %}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// User autocomplete based on selected realm
-$('#realm').on('change', function() {
-    var realm = $(this).val();
-    var $list = $('#user-suggestions');
-    $list.empty();
-    if (!realm) return;
-    $.getJSON('{% url "api_users" %}', {realm: realm}, function(data) {
-        (data.users || []).forEach(function(u) {
-            $list.append($('<option>').val(u));
-        });
-    });
-});
-</script>
 {% endblock %}

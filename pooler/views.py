@@ -14,6 +14,7 @@ from .pool_service import (
     allocate_ip, release_ip, full_sync, get_pi_client,
     PoolServiceError,
 )
+from .view_helpers import global_counts, palette_context, pool_subnet_context
 
 log = logging.getLogger('pooler')
 
@@ -56,14 +57,65 @@ def logout_view(request):
 def dashboard_view(request):
     pools = VpnPool.objects.all()
     pool_data = []
+    totals = {'total': 0, 'allocated': 0, 'free': 0}
     for pool in pools:
         stats = get_pool_stats(pool)
-        pool_data.append({'pool': pool, **stats})
+        totals['total']     += stats['total']
+        totals['allocated'] += stats['allocated']
+        totals['free']      += stats['free']
+        pool_data.append({
+            'pool': pool,
+            **stats,
+            **pool_subnet_context(pool, max_cells=512),  # smaller on overview
+        })
+    totals['percent'] = (
+        round(totals['allocated'] / totals['total'] * 100) if totals['total'] else 0
+    )
+    recent_alloc = (Allocation.objects
+                    .select_related('pool')
+                    .order_by('-synced_at')[:8])
     last_sync = SyncLog.objects.first()
     return render(request, 'pooler/dashboard.html', {
         'page': 'dashboard',
         'pool_data': pool_data,
+        'totals': totals,
+        'recent_alloc': recent_alloc,
         'last_sync': last_sync,
+        **global_counts(),
+        **palette_context(pools),
+    })
+
+
+@pi_auth_required
+def allocation_list_view(request):
+    """Cross-pool allocation view. JS handles client-side sort/filter."""
+    q = request.GET.get('q', '').strip()
+    pool_filter = request.GET.get('pool', '').strip()
+    qs = Allocation.objects.select_related('pool').all()
+    if q:
+        qs = qs.filter(ip_address__icontains=q) | qs.filter(username__icontains=q) | qs.filter(realm__icontains=q)
+    if pool_filter:
+        qs = qs.filter(pool__pk=pool_filter)
+
+    page = int(request.GET.get('page', 1))
+    per_page = 25
+    total = qs.count()
+    start = max(0, (page - 1) * per_page)
+    rows = list(qs[start:start + per_page])
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    return render(request, 'pooler/allocation_list.html', {
+        'page': 'allocations',
+        'rows': rows,
+        'q': q,
+        'pool_filter': pool_filter,
+        'pools': VpnPool.objects.all(),
+        'total': total,
+        'page_n': page,
+        'pages': pages,
+        'per_page': per_page,
+        **global_counts(),
+        **palette_context(),
     })
 
 
@@ -79,6 +131,8 @@ def pool_list_view(request):
     return render(request, 'pooler/pool_list.html', {
         'page': 'pools',
         'pool_data': pool_data,
+        **global_counts(),
+        **palette_context(pools),
     })
 
 
@@ -93,8 +147,9 @@ def pool_create_view(request):
         if not name or not cidr or not attr_key:
             messages.error(request, 'Name, CIDR, and Attribute Key are required.')
             return render(request, 'pooler/pool_form.html', {
-                'page': 'pools', 'editing': False,
+                'page': 'pool_new', 'editing': False,
                 'form': request.POST,
+                **global_counts(), **palette_context(),
             })
         try:
             pool = create_pool(name, cidr, attr_key, description, gateway_ip)
@@ -103,11 +158,13 @@ def pool_create_view(request):
         except (PoolServiceError, Exception) as e:
             messages.error(request, str(e))
             return render(request, 'pooler/pool_form.html', {
-                'page': 'pools', 'editing': False,
+                'page': 'pool_new', 'editing': False,
                 'form': request.POST,
+                **global_counts(), **palette_context(),
             })
     return render(request, 'pooler/pool_form.html', {
-        'page': 'pools', 'editing': False, 'form': {},
+        'page': 'pool_new', 'editing': False, 'form': {},
+        **global_counts(), **palette_context(),
     })
 
 
@@ -122,11 +179,12 @@ def pool_edit_view(request, pk):
         messages.success(request, f'Pool "{pool.name}" updated.')
         return redirect('pool_detail', pk=pool.pk)
     return render(request, 'pooler/pool_form.html', {
-        'page': 'pools', 'editing': True, 'pool': pool,
+        'page': 'pool_edit', 'editing': True, 'pool': pool,
         'form': {
             'name': pool.name, 'cidr': pool.cidr, 'attr_key': pool.attr_key,
             'description': pool.description, 'gateway_ip': pool.gateway_ip or '',
         },
+        **global_counts(), **palette_context(),
     })
 
 
@@ -146,12 +204,16 @@ def pool_detail_view(request, pk):
         pass
 
     return render(request, 'pooler/pool_detail.html', {
-        'page': 'pools',
+        'page': 'pool_detail',
         'pool': pool,
         'stats': stats,
         'allocations': allocations,
         'free_ips': free_ips,
+        'next_ip': free_ips[0] if free_ips else None,
         'realms': realms,
+        **pool_subnet_context(pool),
+        **global_counts(),
+        **palette_context(),
     })
 
 
@@ -214,9 +276,13 @@ def sync_view(request):
         return redirect('dashboard')
     # GET — show sync history
     logs = SyncLog.objects.all()[:20]
+    last = logs[0] if logs else None
     return render(request, 'pooler/sync.html', {
         'page': 'sync',
         'logs': logs,
+        'last': last,
+        **global_counts(),
+        **palette_context(),
     })
 
 
