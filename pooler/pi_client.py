@@ -240,6 +240,79 @@ class PIClient:
             raise PIClientError(msg)
         return result['value']
 
+    # --- token management (2FA) -----------------------------------------------
+
+    def set_token(self, token, username=None, password=None):
+        """Inject a pre-existing JWT (e.g. from session) into this client."""
+        import json, base64
+        self._token = token
+        self._username = username
+        self._password = password
+        payload_b64 = token.split('.')[1]
+        payload_b64 += '=' * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        self._token_exp = datetime.fromtimestamp(payload['exp'], tz=timezone.utc)
+
+    def list_tokens(self, username=None, realm=None):
+        """List token objects (TOTP, HOTP, etc.) for a user.
+        If username is None, returns tokens visible to the authenticated JWT."""
+        self._ensure_auth()
+        params = {}
+        if username:
+            params['user'] = username
+        if realm:
+            params['realm'] = realm
+        log.debug('PI GET /token/ user=%s realm=%s', username, realm)
+        resp = self._request(
+            'GET',
+            f'{self.base_url}/token/',
+            params=params or None,
+            headers=self._headers(),
+            verify=self.verify_ssl,
+            timeout=15,
+        )
+        data = resp.json()
+        if not data.get('result', {}).get('status'):
+            raise PIClientError('Failed to list tokens')
+        tokens = data['result']['value'].get('tokens', [])
+        log.debug('PI /token/ returned %d token(s)', len(tokens))
+        return tokens
+
+    def has_active_totp(self, username=None, realm=None):
+        """Check if a user has at least one active TOTP token."""
+        try:
+            tokens = self.list_tokens(username=username, realm=realm)
+            for t in tokens:
+                if (t.get('tokentype', '').lower() == 'totp'
+                        and t.get('active', False)
+                        and not t.get('revoked', False)):
+                    return True
+            return False
+        except PIClientError:
+            log.warning('list_tokens failed for user=%s — treating as no TOTP', username)
+            return False
+
+    def validate_check(self, username, otp, realm=None):
+        """Validate a OTP via /validate/check. Returns True on success."""
+        log.debug('PI POST /validate/check user=%s', username)
+        data = {'user': username, 'pass': otp}
+        if realm:
+            data['realm'] = realm
+        resp = self._request(
+            'POST',
+            f'{self.base_url}/validate/check',
+            data=data,
+            verify=self.verify_ssl,
+            timeout=15,
+        )
+        result = resp.json().get('result', {})
+        ok = result.get('status', False) and result.get('value', False)
+        if ok:
+            log.info('OTP validation success user=%s', username)
+        else:
+            log.warning('OTP validation failed user=%s', username)
+        return ok
+
     # --- scan all users for IP uniqueness ------------------------------------
 
     def find_ip_across_all_users(self, ip_address):

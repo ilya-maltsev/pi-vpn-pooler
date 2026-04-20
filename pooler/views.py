@@ -3,18 +3,18 @@ import logging
 
 from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, redirect
 from django.views.decorators.http import require_POST
 
 from .decorators import pi_auth_required
-from .models import VpnPool, Allocation, SyncLog
+from .live import get_pi_client, live_allocations, live_allocations_all
 from .pi_client import PIClient, PIClientError
 from .pool_service import (
     create_pool, delete_pool, get_pool_stats, get_free_ips,
-    allocate_ip, release_ip, full_sync, get_pi_client,
-    PoolServiceError,
+    allocate_ip, release_ip, PoolServiceError,
 )
-from .view_helpers import global_counts, palette_context, pool_subnet_context
+from .pool_store import get_all_pools, get_pool_or_404, update_pool
+from .view_helpers import palette_context, pool_subnet_context
 
 log = logging.getLogger('pooler')
 
@@ -36,12 +36,57 @@ def login_view(request):
             request.session['pi_token'] = token
             request.session['pi_username'] = username
             request.session['pi_password'] = password
-            log.info('Login success user=%s', username)
-            return redirect('dashboard')
+
+            # Check if user has active TOTP
+            client.set_token(token, username=username, password=password)
+            has_totp = client.has_active_totp(username=username)
+
+            if has_totp:
+                request.session['pi_2fa_ok'] = False
+                request.session['pi_needs_otp'] = True
+                log.info('Login password OK user=%s — OTP required', username)
+                return redirect('login_otp')
+            else:
+                request.session['pi_2fa_ok'] = True
+                request.session['pi_needs_otp'] = False
+                log.info('Login success user=%s (no TOTP enrolled)', username)
+                return redirect('dashboard')
+
         except PIClientError as e:
             log.warning('Login failed user=%s: %s', username, e)
             messages.error(request, f'Authentication failed: {e}')
     return render(request, 'pooler/login.html')
+
+
+def login_otp_view(request):
+    """OTP step of 2FA login."""
+    # Guard: must have token but not yet 2FA'd
+    if not request.session.get('pi_token'):
+        return redirect('login')
+    if request.session.get('pi_2fa_ok'):
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        otp = request.POST.get('otp', '').strip()
+        if not otp or not otp.isdigit() or len(otp) != 6:
+            messages.error(request, 'Enter a valid 6-digit code.')
+            return render(request, 'pooler/login_otp.html')
+
+        username = request.session.get('pi_username', '')
+        client = PIClient()
+        try:
+            ok = client.validate_check(username, otp)
+            if ok:
+                request.session['pi_2fa_ok'] = True
+                log.info('OTP verified user=%s', username)
+                return redirect('dashboard')
+            else:
+                messages.error(request, 'Invalid code. Please try again.')
+        except PIClientError as e:
+            log.warning('OTP validation error user=%s: %s', username, e)
+            messages.error(request, 'Verification failed. Please try again.')
+
+    return render(request, 'pooler/login_otp.html')
 
 
 def logout_view(request):
@@ -55,53 +100,77 @@ def logout_view(request):
 
 @pi_auth_required
 def dashboard_view(request):
-    pools = VpnPool.objects.all()
+    pools = get_all_pools()
+    # Single PI scan for all pools
+    allocs_by_pool = live_allocations_all(request.session, pools)
+
     pool_data = []
     totals = {'total': 0, 'allocated': 0, 'free': 0}
+    all_allocs = []
+
     for pool in pools:
-        stats = get_pool_stats(pool)
-        totals['total']     += stats['total']
+        pool_allocs = allocs_by_pool.get(pool.id, [])
+        used_ips = [a.ip_address for a in pool_allocs]
+        stats = get_pool_stats(pool, used_ips=used_ips)
+        totals['total'] += stats['total']
         totals['allocated'] += stats['allocated']
-        totals['free']      += stats['free']
+        totals['free'] += stats['free']
         pool_data.append({
             'pool': pool,
             **stats,
-            **pool_subnet_context(pool, max_cells=512),  # smaller on overview
+            **pool_subnet_context(pool, used_ips=used_ips, max_cells=512),
         })
+        all_allocs.extend(pool_allocs)
+
     totals['percent'] = (
         round(totals['allocated'] / totals['total'] * 100) if totals['total'] else 0
     )
-    recent_alloc = (Allocation.objects
-                    .select_related('pool')
-                    .order_by('-synced_at')[:8])
-    last_sync = SyncLog.objects.first()
+    # Show first 8 allocations sorted by IP (no "recent" concept anymore)
+    sample_allocs = sorted(all_allocs, key=lambda a: tuple(int(x) for x in a.ip_address.split('.')))[:8]
+
     return render(request, 'pooler/dashboard.html', {
         'page': 'dashboard',
         'pool_data': pool_data,
         'totals': totals,
-        'recent_alloc': recent_alloc,
-        'last_sync': last_sync,
-        **global_counts(),
+        'sample_allocs': sample_allocs,
+        'pool_count': len(pools),
         **palette_context(pools),
     })
 
 
 @pi_auth_required
 def allocation_list_view(request):
-    """Cross-pool allocation view. JS handles client-side sort/filter."""
+    """Cross-pool allocation view."""
+    pools = get_all_pools()
+    allocs_by_pool = live_allocations_all(request.session, pools)
+
+    # Flatten all allocations
+    all_allocs = []
+    for pool_allocs in allocs_by_pool.values():
+        all_allocs.extend(pool_allocs)
+
+    # Filter
     q = request.GET.get('q', '').strip()
     pool_filter = request.GET.get('pool', '').strip()
-    qs = Allocation.objects.select_related('pool').all()
-    if q:
-        qs = qs.filter(ip_address__icontains=q) | qs.filter(username__icontains=q) | qs.filter(realm__icontains=q)
-    if pool_filter:
-        qs = qs.filter(pool__pk=pool_filter)
 
+    if q:
+        q_lower = q.lower()
+        all_allocs = [a for a in all_allocs
+                      if q_lower in a.ip_address.lower()
+                      or q_lower in a.username.lower()
+                      or q_lower in a.realm.lower()]
+    if pool_filter:
+        all_allocs = [a for a in all_allocs if a.pool.id == pool_filter]
+
+    # Sort by IP
+    all_allocs.sort(key=lambda a: tuple(int(x) for x in a.ip_address.split('.')))
+
+    # Paginate
     page = int(request.GET.get('page', 1))
     per_page = 25
-    total = qs.count()
+    total = len(all_allocs)
     start = max(0, (page - 1) * per_page)
-    rows = list(qs[start:start + per_page])
+    rows = all_allocs[start:start + per_page]
     pages = max(1, (total + per_page - 1) // per_page)
 
     return render(request, 'pooler/allocation_list.html', {
@@ -109,13 +178,13 @@ def allocation_list_view(request):
         'rows': rows,
         'q': q,
         'pool_filter': pool_filter,
-        'pools': VpnPool.objects.all(),
+        'pools': pools,
         'total': total,
         'page_n': page,
         'pages': pages,
         'per_page': per_page,
-        **global_counts(),
-        **palette_context(),
+        'pool_count': len(pools),
+        **palette_context(pools),
     })
 
 
@@ -123,21 +192,25 @@ def allocation_list_view(request):
 
 @pi_auth_required
 def pool_list_view(request):
-    pools = VpnPool.objects.all()
+    pools = get_all_pools()
+    allocs_by_pool = live_allocations_all(request.session, pools)
     pool_data = []
     for pool in pools:
-        stats = get_pool_stats(pool)
+        pool_allocs = allocs_by_pool.get(pool.id, [])
+        used_ips = [a.ip_address for a in pool_allocs]
+        stats = get_pool_stats(pool, used_ips=used_ips)
         pool_data.append({'pool': pool, **stats})
     return render(request, 'pooler/pool_list.html', {
         'page': 'pools',
         'pool_data': pool_data,
-        **global_counts(),
+        'pool_count': len(pools),
         **palette_context(pools),
     })
 
 
 @pi_auth_required
 def pool_create_view(request):
+    pools = get_all_pools()
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         cidr = request.POST.get('cidr', '').strip()
@@ -149,7 +222,7 @@ def pool_create_view(request):
             return render(request, 'pooler/pool_form.html', {
                 'page': 'pool_new', 'editing': False,
                 'form': request.POST,
-                **global_counts(), **palette_context(),
+                'pool_count': len(pools), **palette_context(pools),
             })
         try:
             pool = create_pool(name, cidr, attr_key, description, gateway_ip)
@@ -160,22 +233,22 @@ def pool_create_view(request):
             return render(request, 'pooler/pool_form.html', {
                 'page': 'pool_new', 'editing': False,
                 'form': request.POST,
-                **global_counts(), **palette_context(),
+                'pool_count': len(pools), **palette_context(pools),
             })
     return render(request, 'pooler/pool_form.html', {
         'page': 'pool_new', 'editing': False, 'form': {},
-        **global_counts(), **palette_context(),
+        'pool_count': len(pools), **palette_context(pools),
     })
 
 
 @pi_auth_required
 def pool_edit_view(request, pk):
-    pool = get_object_or_404(VpnPool, pk=pk)
+    pool = get_pool_or_404(pk)
+    pools = get_all_pools()
     if request.method == 'POST':
-        pool.description = request.POST.get('description', '').strip()
-        gateway_ip = request.POST.get('gateway_ip', '').strip()
-        pool.gateway_ip = gateway_ip or None
-        pool.save()
+        description = request.POST.get('description', '').strip()
+        gateway_ip = request.POST.get('gateway_ip', '').strip() or None
+        update_pool(pk, description=description, gateway_ip=gateway_ip)
         messages.success(request, f'Pool "{pool.name}" updated.')
         return redirect('pool_detail', pk=pool.pk)
     return render(request, 'pooler/pool_form.html', {
@@ -184,16 +257,18 @@ def pool_edit_view(request, pk):
             'name': pool.name, 'cidr': pool.cidr, 'attr_key': pool.attr_key,
             'description': pool.description, 'gateway_ip': pool.gateway_ip or '',
         },
-        **global_counts(), **palette_context(),
+        'pool_count': len(pools), **palette_context(pools),
     })
 
 
 @pi_auth_required
 def pool_detail_view(request, pk):
-    pool = get_object_or_404(VpnPool, pk=pk)
-    stats = get_pool_stats(pool)
-    allocations = pool.allocations.all()
-    free_ips = get_free_ips(pool, limit=50)
+    pool = get_pool_or_404(pk)
+    pools = get_all_pools()
+    allocs = live_allocations(request.session, pool)
+    used_ips = [a.ip_address for a in allocs]
+    stats = get_pool_stats(pool, used_ips=used_ips)
+    free_ips = get_free_ips(pool, used_ips, limit=50)
 
     # Get realms for dropdown
     realms = []
@@ -207,13 +282,13 @@ def pool_detail_view(request, pk):
         'page': 'pool_detail',
         'pool': pool,
         'stats': stats,
-        'allocations': allocations,
+        'allocations': allocs,
         'free_ips': free_ips,
         'next_ip': free_ips[0] if free_ips else None,
         'realms': realms,
-        **pool_subnet_context(pool),
-        **global_counts(),
-        **palette_context(),
+        **pool_subnet_context(pool, used_ips=used_ips),
+        'pool_count': len(pools),
+        **palette_context(pools),
     })
 
 
@@ -221,8 +296,9 @@ def pool_detail_view(request, pk):
 @require_POST
 def pool_delete_view(request, pk):
     try:
-        pool_name = VpnPool.objects.get(pk=pk).name
-        delete_pool(pk)
+        pool = get_pool_or_404(pk)
+        pool_name = pool.name
+        delete_pool(request.session, pk)
         messages.success(request, f'Pool "{pool_name}" deleted.')
     except PoolServiceError as e:
         messages.error(request, str(e))
@@ -242,8 +318,8 @@ def allocate_view(request, pk):
         messages.error(request, 'Username and realm are required.')
         return redirect('pool_detail', pk=pk)
     try:
-        alloc = allocate_ip(request.session, pk, username, realm, ip_address)
-        messages.success(request, f'IP {alloc.ip_address} allocated to {username}@{realm}')
+        allocated_ip = allocate_ip(request.session, pk, username, realm, ip_address)
+        messages.success(request, f'IP {allocated_ip} allocated to {username}@{realm}')
     except PoolServiceError as e:
         messages.error(request, str(e))
     return redirect('pool_detail', pk=pk)
@@ -251,39 +327,20 @@ def allocate_view(request, pk):
 
 @pi_auth_required
 @require_POST
-def release_view(request, pk, ip):
+def release_view(request, pk):
+    """Release an IP. POST body carries ip_address, username, realm."""
+    ip_address = request.POST.get('ip_address', '').strip()
+    username = request.POST.get('username', '').strip()
+    realm = request.POST.get('realm', '').strip()
+    if not ip_address or not username or not realm:
+        messages.error(request, 'IP address, username, and realm are required.')
+        return redirect('pool_detail', pk=pk)
     try:
-        release_ip(request.session, pk, ip)
-        messages.success(request, f'IP {ip} released.')
+        release_ip(request.session, pk, ip_address, username, realm)
+        messages.success(request, f'IP {ip_address} released.')
     except PoolServiceError as e:
         messages.error(request, str(e))
     return redirect('pool_detail', pk=pk)
-
-
-# --- sync --------------------------------------------------------------------
-
-@pi_auth_required
-def sync_view(request):
-    if request.method == 'POST':
-        try:
-            sync_log = full_sync(request.session)
-            if sync_log.status == 'success':
-                messages.success(request, sync_log.details)
-            else:
-                messages.error(request, f'Sync failed: {sync_log.details}')
-        except PoolServiceError as e:
-            messages.error(request, str(e))
-        return redirect('dashboard')
-    # GET — show sync history
-    logs = SyncLog.objects.all()[:20]
-    last = logs[0] if logs else None
-    return render(request, 'pooler/sync.html', {
-        'page': 'sync',
-        'logs': logs,
-        'last': last,
-        **global_counts(),
-        **palette_context(),
-    })
 
 
 # --- JSON API ----------------------------------------------------------------
@@ -306,6 +363,8 @@ def api_users(request):
 @pi_auth_required
 def api_free_ips(request, pk):
     """Return free IPs for a pool."""
-    pool = get_object_or_404(VpnPool, pk=pk)
-    ips = get_free_ips(pool, limit=200)
+    pool = get_pool_or_404(pk)
+    allocs = live_allocations(request.session, pool)
+    used_ips = [a.ip_address for a in allocs]
+    ips = get_free_ips(pool, used_ips, limit=200)
     return JsonResponse({'ips': ips, 'total_free': len(ips)})

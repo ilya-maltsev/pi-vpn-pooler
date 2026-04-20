@@ -10,7 +10,6 @@
             {% elif page == 'pool_new' %}<span class="sep">/</span><a href="{% url 'pool_list' %}" class="ghost">{% trans "Pools" %}</a><span class="sep">/</span><span class="cur">{% trans "New" %}</span>
             {% elif page == 'pool_edit' %}<span class="sep">/</span><a href="{% url 'pool_list' %}" class="ghost">{% trans "Pools" %}</a><span class="sep">/</span><a href="{% url 'pool_detail' pool.pk %}" class="ghost mono">{{ pool.name }}</a><span class="sep">/</span><span class="cur">{% trans "Edit" %}</span>
             {% elif page == 'allocations' %}<span class="sep">/</span><span class="cur">{% trans "Allocations" %}</span>
-            {% elif page == 'sync' %}<span class="sep">/</span><span class="cur">{% trans "Sync" %}</span>
             {% endif %}
         {% endblock %}
     </div>

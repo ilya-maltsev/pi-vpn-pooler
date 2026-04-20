@@ -9,28 +9,7 @@
         <h1 class="page-title">{% trans "Overview" %}
             <span class="mono-sub">{{ pool_count }} {% trans "pools" %} · {{ totals.total }} {% trans "hosts" %}</span>
         </h1>
-        <div class="page-sub">
-            {% if last_sync %}
-                {% trans "Last sync" %} <span class="mono">{{ last_sync.started_at|date:"Y-m-d H:i" }}</span>
-                {% if last_sync.status == 'success' %}· {% include 'pooler/_badge.html' with tone='ok' text='ok' dot=True %}
-                {% else %}· {% include 'pooler/_badge.html' with tone='bad' text=last_sync.status dot=True %}{% endif %}
-            {% else %}
-                {% trans "No sync recorded yet" %}
-            {% endif %}
-        </div>
-    </div>
-    <div class="page-actions">
-        <a class="btn ghost" href="{% url 'sync' %}">
-            {% include 'pooler/_icon.html' with name='clock' %}
-            <span>{% trans "History" %}</span>
-        </a>
-        <form method="post" action="{% url 'sync' %}" style="display:inline">
-            {% csrf_token %}
-            <button type="submit" class="btn accent">
-                {% include 'pooler/_icon.html' with name='sync' %}
-                <span>{% trans "Sync now" %}</span>
-            </button>
-        </form>
+        <div class="page-sub">{% trans "Live data from privacyIDEA" %}</div>
     </div>
 </div>
 
@@ -113,17 +92,17 @@
 
 <!-- two-up -->
 <div class="grid-2" style="margin-top:16px">
-    <!-- recent allocations -->
+    <!-- allocations sample -->
     <div class="card">
         <div class="card-head">
-            <h3>{% trans "Recent allocations" %}</h3>
+            <h3>{% trans "Allocations" %}</h3>
             <a class="sub" href="{% url 'allocation_list' %}">{% trans "view all" %} →</a>
         </div>
         <div class="card-body" style="padding:0">
-            {% if recent_alloc %}
+            {% if sample_allocs %}
             <table class="tbl" style="font-size:12px">
                 <tbody>
-                {% for a in recent_alloc %}
+                {% for a in sample_allocs %}
                 <tr>
                     <td class="mono">{{ a.ip_address }}</td>
                     <td>{{ a.username }}<span class="mut">@{{ a.realm }}</span></td>

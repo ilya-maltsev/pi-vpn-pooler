@@ -6,7 +6,7 @@
         </div>
         <div class="brand-text">
             VPN Pooler
-            <span class="brand-sub">privacyIDEA · v2</span>
+            <span class="brand-sub">privacyIDEA · v3</span>
         </div>
     </div>
 
@@ -27,23 +27,18 @@
         <a href="{% url 'pool_list' %}" class="side-link {% if page == 'pools' %}active{% endif %}" title="{% trans 'Pools' %}">
             {% include 'pooler/_icon.html' with name='pools' %}
             <span class="side-label">{% trans "Pools" %}</span>
-            {% if pool_count is not None %}<span class="count">{{ pool_count }}</span>{% endif %}
+            {% if pool_count %}<span class="count">{{ pool_count }}</span>{% endif %}
         </a>
         <a href="{% url 'allocation_list' %}" class="side-link {% if page == 'allocations' %}active{% endif %}" title="{% trans 'Allocations' %}">
             {% include 'pooler/_icon.html' with name='network' %}
             <span class="side-label">{% trans "Allocations" %}</span>
-            {% if alloc_count is not None %}<span class="count">{{ alloc_count }}</span>{% endif %}
         </a>
         <a href="{% url 'pool_create' %}" class="side-link {% if page == 'pool_new' %}active{% endif %}" title="{% trans 'New pool' %}">
             {% include 'pooler/_icon.html' with name='plus' %}
             <span class="side-label">{% trans "New pool" %}</span>
         </a>
 
-        <div class="side-section">{% trans "System" %}</div>
-        <a href="{% url 'sync' %}" class="side-link {% if page == 'sync' %}active{% endif %}" title="{% trans 'Sync' %}">
-            {% include 'pooler/_icon.html' with name='sync' %}
-            <span class="side-label">{% trans "Sync" %}</span>
-        </a>
+        <div class="side-section">&nbsp;</div>
         <button type="button" class="side-link" data-action="toggle-sidebar" title="{% trans 'Collapse' %}">
             {% include 'pooler/_icon.html' with name='menu' %}
             <span class="side-label">{% trans "Collapse" %}</span>

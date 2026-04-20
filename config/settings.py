@@ -51,16 +51,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'vpn_pooler'),
-        'USER': os.environ.get('DB_USER', 'vpn_pooler'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'vpn_pooler'),
-        'HOST': os.environ.get('DB_HOST', '127.0.0.1'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
-    }
-}
+# No database — pools stored in YAML, allocations are live from PI
+DATABASES = {}
+
+# Session stored in signed cookies (no DB needed)
+SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
+SESSION_COOKIE_AGE = 86400  # 24 hours
 
 from django.utils.translation import gettext_lazy as _
 
@@ -86,13 +82,14 @@ LOGIN_URL = '/login/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# --- Pool storage (YAML file) ------------------------------------------------
+POOLS_FILE = os.environ.get('POOLS_FILE', str(BASE_DIR / 'data' / 'pools.yaml'))
+
 # --- privacyIDEA connection ---------------------------------------------------
 PI_API_URL = os.environ.get('PI_API_URL', 'https://localhost:8443')
 PI_VERIFY_SSL = os.environ.get('PI_VERIFY_SSL', 'false').lower() in ('true', '1', 'yes')
 
 # --- Logging -----------------------------------------------------------------
-# Console is always on. Remote rsyslog forwarding is opt-in via SYSLOG_ENABLED.
-# Defaults: UDP, port 514, INFO level.
 SYSLOG_ENABLED = os.environ.get('SYSLOG_ENABLED', 'false').lower() in ('true', '1', 'yes')
 SYSLOG_HOST = os.environ.get('SYSLOG_HOST', '')
 SYSLOG_PORT = int(os.environ.get('SYSLOG_PORT', '514'))

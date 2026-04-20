@@ -89,7 +89,7 @@
                 <dt>{% trans "CIDR" %}</dt><dd><span class="mono" data-copy>{{ pool.cidr }}</span></dd>
                 <dt>{% trans "Attribute" %}</dt><dd>{% include 'pooler/_badge.html' with tone='accent' text=pool.attr_key %}</dd>
                 <dt>{% trans "Gateway" %}</dt><dd>{% if pool.gateway_ip %}<span class="mono" data-copy>{{ pool.gateway_ip }}</span>{% else %}<span class="mut">—</span>{% endif %}</dd>
-                <dt>{% trans "Created" %}</dt><dd class="mono">{{ pool.created_at|date:"Y-m-d H:i" }}</dd>
+                <dt>{% trans "Created" %}</dt><dd class="mono">{{ pool.created_at }}</dd>
                 <dt>{% trans "Description" %}</dt><dd>{{ pool.description|default:"—" }}</dd>
             </dl>
         </div>
@@ -149,7 +149,7 @@
                     <th class="sortable" data-key="username">{% trans "Username" %}<span class="sort-ico">↕</span></th>
                     <th class="sortable" data-key="realm">{% trans "Realm" %}<span class="sort-ico">↕</span></th>
                     <th class="sortable" data-key="attr">{% trans "Attribute" %}<span class="sort-ico">↕</span></th>
-                    <th class="sortable" data-key="synced">{% trans "Synced" %}<span class="sort-ico">↕</span></th>
+                    <th class="sortable" data-key="synced">{% trans "Fetched" %}<span class="sort-ico">↕</span></th>
                     <th style="width:120px"></th>
                 </tr>
             </thead>
@@ -170,8 +170,11 @@
                             {% include 'pooler/_icon.html' with name='trash' %}
                             <span>{% trans "Release" %}</span>
                         </button>
-                        <form id="release-{{ a.pk }}" method="post" action="{% url 'release' pool.pk a.ip_address %}" style="display:none">
+                        <form id="release-{{ a.pk }}" method="post" action="{% url 'release' pool.pk %}" style="display:none">
                             {% csrf_token %}
+                            <input type="hidden" name="ip_address" value="{{ a.ip_address }}">
+                            <input type="hidden" name="username" value="{{ a.username }}">
+                            <input type="hidden" name="realm" value="{{ a.realm }}">
                         </form>
                     </td>
                 </tr>
