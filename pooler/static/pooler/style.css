@@ -41,6 +41,13 @@ body.light {
   --accent-ink: #04121a;
 }
 
+.ico {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex-shrink: 0;
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
