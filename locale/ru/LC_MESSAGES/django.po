@@ -1,0 +1,355 @@
+# Russian translations for VPN Pooler.
+# Copyright (C) 2026
+# This file is distributed under the same license as the VPN Pooler package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: VPN Pooler 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-22 06:10+0000\n"
+"PO-Revision-Date: 2026-04-22 06:10+0000\n"
+"Last-Translator: \n"
+"Language-Team: Russian\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<12 || n%100>14) ? 1 : n%10==0 || (n%10>=5 && n%10<=9) || "
+"(n%100>=11 && n%100<=14)? 2 : 3);\n"
+
+msgid "Russian"
+msgstr "Русский"
+
+msgid "English"
+msgstr "Английский"
+
+msgid "Monitor"
+msgstr "Мониторинг"
+
+msgid "Overview"
+msgstr "Обзор"
+
+msgid "Network"
+msgstr "Сеть"
+
+msgid "Pools"
+msgstr "Пулы"
+
+msgid "Allocations"
+msgstr "Назначения"
+
+msgid "New pool"
+msgstr "Новый пул"
+
+msgid "Collapse"
+msgstr "Свернуть"
+
+msgid "New"
+msgstr "Новый"
+
+msgid "Edit"
+msgstr "Редактировать"
+
+msgid "Logout"
+msgstr "Выход"
+
+msgid "total"
+msgstr "всего"
+
+msgid "Search IP, user, realm…"
+msgstr "Поиск IP, пользователя, realm…"
+
+msgid "All pools"
+msgstr "Все пулы"
+
+msgid "Apply"
+msgstr "Применить"
+
+msgid "Clear"
+msgstr "Сбросить"
+
+msgid "IP"
+msgstr "IP"
+
+msgid "Username"
+msgstr "Имя пользователя"
+
+msgid "Realm"
+msgstr "Realm"
+
+msgid "Pool"
+msgstr "Пул"
+
+msgid "Attribute"
+msgstr "Атрибут"
+
+msgid "Release IP"
+msgstr "Освободить IP"
+
+#, python-format
+msgid "Release %(ip)s from %(u)s@%(r)s?"
+msgstr "Освободить %(ip)s от %(u)s@%(r)s?"
+
+msgid "Release"
+msgstr "Освободить"
+
+msgid "No allocations match."
+msgstr "Назначения не найдены."
+
+#, python-format
+msgid "Showing %(a)s of %(b)s"
+msgstr "Показано %(a)s из %(b)s"
+
+msgid "✓ copied"
+msgstr "✓ скопировано"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Confirm"
+msgstr "Подтвердить"
+
+msgid "Type a command or search…"
+msgstr "Введите команду или поиск…"
+
+msgid "No matches."
+msgstr "Ничего не найдено."
+
+msgid "navigate"
+msgstr "навигация"
+
+msgid "select"
+msgstr "выбрать"
+
+msgid "close"
+msgstr "закрыть"
+
+msgid "host"
+msgstr "хост"
+
+msgid "pools"
+msgstr "пулов"
+
+msgid "hosts"
+msgstr "хостов"
+
+msgid "free IPs"
+msgstr "свободных IP"
+
+msgid "Live data from privacyIDEA"
+msgstr "Данные из privacyIDEA в реальном времени"
+
+msgid "Allocated"
+msgstr "Назначено"
+
+msgid "across"
+msgstr "в"
+
+msgid "Capacity"
+msgstr "Ёмкость"
+
+msgid "usable hosts"
+msgstr "доступных хостов"
+
+msgid "Utilization"
+msgstr "Использование"
+
+msgid "Free"
+msgstr "Свободно"
+
+msgid "ready to allocate"
+msgstr "готово к назначению"
+
+msgid "used"
+msgstr "занято"
+
+msgid "gateway"
+msgstr "шлюз"
+
+msgid "free"
+msgstr "свободно"
+
+msgid "No pools yet."
+msgstr "Пулов пока нет."
+
+msgid "Create first pool"
+msgstr "Создать первый пул"
+
+msgid "view all"
+msgstr "показать все"
+
+msgid "No allocations yet."
+msgstr "Назначений пока нет."
+
+msgid "Pool health"
+msgstr "Состояние пулов"
+
+msgid "No pools to report."
+msgstr "Нет пулов для отображения."
+
+msgid "Sign in"
+msgstr "Войти"
+
+msgid "Sign in with your privacyIDEA admin account"
+msgstr "Войдите с учётной записью администратора privacyIDEA"
+
+msgid "Password"
+msgstr "Пароль"
+
+msgid "Two-factor verification"
+msgstr "Двухфакторная проверка"
+
+#, python-format
+msgid "Enter the 6-digit code for %(u)s"
+msgstr "Введите 6-значный код для %(u)s"
+
+msgid "One-time code"
+msgstr "Одноразовый код"
+
+msgid "Verify"
+msgstr "Проверить"
+
+msgid "Sign out"
+msgstr "Выйти"
+
+msgid "Delete pool"
+msgstr "Удалить пул"
+
+#, python-format
+msgid "Delete pool %(n)s? This will fail if it has allocations."
+msgstr "Удалить пул %(n)s? Не получится, если есть назначения."
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "next:"
+msgstr "следующий:"
+
+msgid "no gateway"
+msgstr "нет шлюза"
+
+msgid "Subnet map"
+msgstr "Карта подсети"
+
+msgid "Details"
+msgstr "Подробности"
+
+msgid "Name"
+msgstr "Название"
+
+msgid "CIDR"
+msgstr "CIDR"
+
+msgid "Gateway"
+msgstr "Шлюз"
+
+msgid "Created"
+msgstr "Создан"
+
+msgid "Description"
+msgstr "Описание"
+
+msgid "Allocate IP"
+msgstr "Назначить IP"
+
+msgid "next available"
+msgstr "следующий свободный"
+
+msgid "Select pool…"
+msgstr "Выберите пул…"
+
+msgid "Select realm…"
+msgstr "Выберите realm…"
+
+msgid "IP address"
+msgstr "IP-адрес"
+
+msgid "Next available"
+msgstr "Следующий свободный"
+
+msgid "Allocate"
+msgstr "Назначить"
+
+msgid "Fetched"
+msgstr "Получено"
+
+#, python-format
+msgid ""
+"Release %(ip)s from %(u)s@%(r)s? The user attribute will also be removed in "
+"privacyIDEA."
+msgstr ""
+"Освободить %(ip)s от %(u)s@%(r)s? Атрибут пользователя также будет удалён "
+"в privacyIDEA."
+
+msgid "Edit pool"
+msgstr "Редактировать пул"
+
+msgid "Attribute key"
+msgstr "Ключ атрибута"
+
+msgid "optional"
+msgstr "необязательно"
+
+msgid "Save changes"
+msgstr "Сохранить"
+
+msgid "Create pool"
+msgstr "Создать пул"
+
+msgid "Used"
+msgstr "Занято"
+
+msgid "Usage"
+msgstr "Использование"
+
+msgid "Showing"
+msgstr "Показано"
+
+msgid "of"
+msgstr "из"
+
+msgid "Username and password are required."
+msgstr "Имя пользователя и пароль обязательны."
+
+#, python-format
+msgid "Authentication failed: %(err)s"
+msgstr "Ошибка аутентификации: %(err)s"
+
+msgid "Enter a valid 6-digit code."
+msgstr "Введите корректный 6-значный код."
+
+msgid "Invalid code. Please try again."
+msgstr "Неверный код. Попробуйте ещё раз."
+
+msgid "Verification failed. Please try again."
+msgstr "Проверка не удалась. Попробуйте ещё раз."
+
+msgid "Name, CIDR, and Attribute Key are required."
+msgstr "Название, CIDR и ключ атрибута обязательны."
+
+#, python-format
+msgid "Pool \"%(name)s\" created."
+msgstr "Пул «%(name)s» создан."
+
+#, python-format
+msgid "Pool \"%(name)s\" updated."
+msgstr "Пул «%(name)s» обновлён."
+
+#, python-format
+msgid "Pool \"%(name)s\" deleted."
+msgstr "Пул «%(name)s» удалён."
+
+msgid "Username and realm are required."
+msgstr "Имя пользователя и realm обязательны."
+
+#, python-format
+msgid "IP %(ip)s allocated to %(user)s@%(realm)s"
+msgstr "IP %(ip)s назначен %(user)s@%(realm)s"
+
+msgid "IP address, username, and realm are required."
+msgstr "IP-адрес, имя пользователя и realm обязательны."
+
+#, python-format
+msgid "IP %(ip)s released."
+msgstr "IP %(ip)s освобождён."

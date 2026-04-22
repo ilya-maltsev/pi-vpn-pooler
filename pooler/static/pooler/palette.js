@@ -75,7 +75,7 @@
     if (flatItems.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'palette-empty';
-      empty.textContent = 'No matches.';
+      empty.textContent = document.body.dataset.i18nNoMatches || 'No matches.';
       body.appendChild(empty);
       return;
     }
@@ -139,7 +139,7 @@
     const input = document.createElement('input');
     input.className = 'palette-input';
     input.type = 'text';
-    input.placeholder = 'Type a command or search…';
+    input.placeholder = document.body.dataset.i18nPalettePlaceholder || 'Type a command or search…';
     input.setAttribute('autocomplete', 'off');
 
     const body = document.createElement('div');
@@ -158,9 +158,10 @@
       span.appendChild(document.createTextNode(' ' + label));
       return span;
     };
-    foot.appendChild(hint(['↑', '↓'], 'navigate'));
-    foot.appendChild(hint(['↵'], 'select'));
-    foot.appendChild(hint(['esc'], 'close'));
+    var i18n = document.body.dataset;
+    foot.appendChild(hint(['↑', '���'], i18n.i18nNavigate || 'navigate'));
+    foot.appendChild(hint(['↵'], i18n.i18nSelect || 'select'));
+    foot.appendChild(hint(['esc'], i18n.i18nClose || 'close'));
 
     box.appendChild(input);
     box.appendChild(body);

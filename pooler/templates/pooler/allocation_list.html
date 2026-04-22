@@ -12,6 +12,46 @@
     </div>
 </div>
 
+{% if pools %}
+<div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+        <h3>{% trans "Allocate IP" %}</h3>
+    </div>
+    <div class="card-body">
+        <form id="allocate-form" method="post" action="" class="grid-form">
+            {% csrf_token %}
+            <div class="field">
+                <label>{% trans "Pool" %}</label>
+                <select name="pool" id="alloc-pool" class="select" required>
+                    <option value="">{% trans "Select pool…" %}</option>
+                    {% for p in pools %}<option value="{{ p.pk }}" data-url="{% url 'allocate' p.pk %}">{{ p.name }} · {{ p.cidr }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>{% trans "Realm" %}</label>
+                <select name="realm" class="select" required>
+                    <option value="">{% trans "Select realm…" %}</option>
+                    {% for r in realms %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>{% trans "Username" %}</label>
+                <div class="ac-wrap">
+                    <input type="text" name="username" class="input" required autocomplete="off">
+                </div>
+            </div>
+            <div class="field">
+                <label>&nbsp;</label>
+                <button type="submit" class="btn accent" id="alloc-submit" disabled>
+                    {% include 'pooler/_icon.html' with name='plus' %}
+                    <span>{% trans "Allocate" %}</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card-head">
         <div style="display:flex;gap:8px;align-items:center;flex:1">
@@ -89,4 +129,80 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var poolSel = document.getElementById('alloc-pool');
+    var form = document.getElementById('allocate-form');
+    var btn = document.getElementById('alloc-submit');
+    var realmSel = form ? form.querySelector('select[name="realm"]') : null;
+    var datalist = document.getElementById('alloc-users');
+    if (!poolSel || !form) return;
+
+    poolSel.addEventListener('change', function () {
+        var opt = poolSel.options[poolSel.selectedIndex];
+        var url = opt.dataset.url || '';
+        form.action = url;
+        btn.disabled = !url;
+    });
+
+    if (realmSel) {
+        var wrap = form.querySelector('.ac-wrap');
+        var usernameInput = wrap.querySelector('input[name="username"]');
+        var list = null;
+        var activeIdx = -1;
+        var fetchTimer;
+
+        function closeList() { if (list) { list.remove(); list = null; activeIdx = -1; } }
+
+        function showList(users) {
+            closeList();
+            if (!users.length) return;
+            list = document.createElement('div');
+            list.className = 'ac-list';
+            users.forEach(function (u, i) {
+                var d = document.createElement('div');
+                d.className = 'ac-item';
+                d.textContent = u;
+                d.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    usernameInput.value = u;
+                    closeList();
+                });
+                list.appendChild(d);
+            });
+            wrap.appendChild(list);
+        }
+
+        function fetchUsers() {
+            var realm = realmSel.value;
+            if (!realm) { closeList(); return; }
+            var q = (usernameInput.value || '').trim();
+            fetch('{% url "api_users" %}?realm=' + encodeURIComponent(realm) + '&q=' + encodeURIComponent(q))
+                .then(function (r) { return r.json(); })
+                .then(function (data) { showList(data.users || []); });
+        }
+
+        realmSel.addEventListener('change', function () { fetchUsers(); });
+        usernameInput.addEventListener('input', function () {
+            clearTimeout(fetchTimer);
+            fetchTimer = setTimeout(fetchUsers, 250);
+        });
+        usernameInput.addEventListener('focus', function () { if (realmSel.value) fetchUsers(); });
+        usernameInput.addEventListener('blur', function () { setTimeout(closeList, 150); });
+        usernameInput.addEventListener('keydown', function (e) {
+            if (!list) return;
+            var items = list.querySelectorAll('.ac-item');
+            if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); }
+            else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); usernameInput.value = items[activeIdx].textContent; closeList(); return; }
+            else if (e.key === 'Escape') { closeList(); return; }
+            else return;
+            items.forEach(function (it, i) { it.classList.toggle('active', i === activeIdx); });
+        });
+    }
+})();
+</script>
 {% endblock %}

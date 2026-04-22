@@ -4,6 +4,7 @@ import logging
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from .decorators import pi_auth_required
@@ -26,7 +27,7 @@ def login_view(request):
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '')
         if not username or not password:
-            messages.error(request, 'Username and password are required.')
+            messages.error(request, _('Username and password are required.'))
             return render(request, 'pooler/login.html')
         log.debug('Login attempt user=%s from %s', username,
                   request.META.get('REMOTE_ADDR', '?'))
@@ -54,7 +55,7 @@ def login_view(request):
 
         except PIClientError as e:
             log.warning('Login failed user=%s: %s', username, e)
-            messages.error(request, f'Authentication failed: {e}')
+            messages.error(request, _('Authentication failed: %(err)s') % {'err': e})
     return render(request, 'pooler/login.html')
 
 
@@ -69,7 +70,7 @@ def login_otp_view(request):
     if request.method == 'POST':
         otp = request.POST.get('otp', '').strip()
         if not otp or not otp.isdigit() or len(otp) != 6:
-            messages.error(request, 'Enter a valid 6-digit code.')
+            messages.error(request, _('Enter a valid 6-digit code.'))
             return render(request, 'pooler/login_otp.html')
 
         username = request.session.get('pi_username', '')
@@ -81,10 +82,10 @@ def login_otp_view(request):
                 log.info('OTP verified user=%s', username)
                 return redirect('dashboard')
             else:
-                messages.error(request, 'Invalid code. Please try again.')
+                messages.error(request, _('Invalid code. Please try again.'))
         except PIClientError as e:
             log.warning('OTP validation error user=%s: %s', username, e)
-            messages.error(request, 'Verification failed. Please try again.')
+            messages.error(request, _('Verification failed. Please try again.'))
 
     return render(request, 'pooler/login_otp.html')
 
@@ -173,12 +174,21 @@ def allocation_list_view(request):
     rows = all_allocs[start:start + per_page]
     pages = max(1, (total + per_page - 1) // per_page)
 
+    # Realms for allocate form
+    realms = []
+    try:
+        client = get_pi_client(request.session)
+        realms = client.get_realms()
+    except Exception:
+        pass
+
     return render(request, 'pooler/allocation_list.html', {
         'page': 'allocations',
         'rows': rows,
         'q': q,
         'pool_filter': pool_filter,
         'pools': pools,
+        'realms': realms,
         'total': total,
         'page_n': page,
         'pages': pages,
@@ -218,7 +228,7 @@ def pool_create_view(request):
         description = request.POST.get('description', '').strip()
         gateway_ip = request.POST.get('gateway_ip', '').strip() or None
         if not name or not cidr or not attr_key:
-            messages.error(request, 'Name, CIDR, and Attribute Key are required.')
+            messages.error(request, _('Name, CIDR, and Attribute Key are required.'))
             return render(request, 'pooler/pool_form.html', {
                 'page': 'pool_new', 'editing': False,
                 'form': request.POST,
@@ -226,7 +236,7 @@ def pool_create_view(request):
             })
         try:
             pool = create_pool(name, cidr, attr_key, description, gateway_ip)
-            messages.success(request, f'Pool "{pool.name}" created.')
+            messages.success(request, _('Pool "%(name)s" created.') % {'name': pool.name})
             return redirect('pool_detail', pk=pool.pk)
         except (PoolServiceError, Exception) as e:
             messages.error(request, str(e))
@@ -249,7 +259,7 @@ def pool_edit_view(request, pk):
         description = request.POST.get('description', '').strip()
         gateway_ip = request.POST.get('gateway_ip', '').strip() or None
         update_pool(pk, description=description, gateway_ip=gateway_ip)
-        messages.success(request, f'Pool "{pool.name}" updated.')
+        messages.success(request, _('Pool "%(name)s" updated.') % {'name': pool.name})
         return redirect('pool_detail', pk=pool.pk)
     return render(request, 'pooler/pool_form.html', {
         'page': 'pool_edit', 'editing': True, 'pool': pool,
@@ -299,7 +309,7 @@ def pool_delete_view(request, pk):
         pool = get_pool_or_404(pk)
         pool_name = pool.name
         delete_pool(request.session, pk)
-        messages.success(request, f'Pool "{pool_name}" deleted.')
+        messages.success(request, _('Pool "%(name)s" deleted.') % {'name': pool_name})
     except PoolServiceError as e:
         messages.error(request, str(e))
         return redirect('pool_detail', pk=pk)
@@ -315,11 +325,12 @@ def allocate_view(request, pk):
     realm = request.POST.get('realm', '').strip()
     ip_address = request.POST.get('ip_address', '').strip() or None
     if not username or not realm:
-        messages.error(request, 'Username and realm are required.')
+        messages.error(request, _('Username and realm are required.'))
         return redirect('pool_detail', pk=pk)
     try:
         allocated_ip = allocate_ip(request.session, pk, username, realm, ip_address)
-        messages.success(request, f'IP {allocated_ip} allocated to {username}@{realm}')
+        messages.success(request, _('IP %(ip)s allocated to %(user)s@%(realm)s') % {
+            'ip': allocated_ip, 'user': username, 'realm': realm})
     except PoolServiceError as e:
         messages.error(request, str(e))
     return redirect('pool_detail', pk=pk)
@@ -333,11 +344,11 @@ def release_view(request, pk):
     username = request.POST.get('username', '').strip()
     realm = request.POST.get('realm', '').strip()
     if not ip_address or not username or not realm:
-        messages.error(request, 'IP address, username, and realm are required.')
+        messages.error(request, _('IP address, username, and realm are required.'))
         return redirect('pool_detail', pk=pk)
     try:
         release_ip(request.session, pk, ip_address, username, realm)
-        messages.success(request, f'IP {ip_address} released.')
+        messages.success(request, _('IP %(ip)s released.') % {'ip': ip_address})
     except PoolServiceError as e:
         messages.error(request, str(e))
     return redirect('pool_detail', pk=pk)
@@ -349,13 +360,16 @@ def release_view(request, pk):
 def api_users(request):
     """Return users for a given realm (for autocomplete)."""
     realm = request.GET.get('realm', '')
+    q = request.GET.get('q', '').strip().lower()
     if not realm:
         return JsonResponse({'users': []})
     try:
         client = get_pi_client(request.session)
         users = client.get_users(realm)
-        usernames = [u.get('username', '') for u in users if u.get('username')]
-        return JsonResponse({'users': sorted(usernames)})
+        usernames = sorted(u.get('username', '') for u in users if u.get('username'))
+        if q:
+            usernames = [u for u in usernames if q in u.lower()]
+        return JsonResponse({'users': usernames[:10]})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 

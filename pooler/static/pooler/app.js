@@ -42,7 +42,7 @@
       document.body.removeChild(ta);
     }
     const orig = el.textContent;
-    el.textContent = '✓ copied';
+    el.textContent = document.body.dataset.i18nCopied || '✓ copied';
     el.classList.add('copy-hit');
     setTimeout(function () {
       el.textContent = orig;
@@ -61,7 +61,7 @@
     const head = document.createElement('div');
     head.className = 'modal-bd-inner';
     const h3 = document.createElement('h3');
-    h3.textContent = opts.title || 'Confirm';
+    h3.textContent = opts.title || document.body.dataset.i18nConfirm || 'Confirm';
     const p = document.createElement('p');
     p.textContent = opts.message || '';
     head.appendChild(h3);
@@ -73,7 +73,7 @@
     const cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.className = 'btn ghost';
-    cancel.textContent = 'Cancel';
+    cancel.textContent = document.body.dataset.i18nCancel || 'Cancel';
     cancel.dataset.cancel = '1';
     const ok = document.createElement('button');
     ok.type = 'button';

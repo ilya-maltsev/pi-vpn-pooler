@@ -42,7 +42,7 @@
         if (!cell) return;
         const idx = Array.prototype.indexOf.call(el.children, cell);
         if (idx < 0) return;
-        label.textContent = 'host .' + (idx + 1);
+        label.textContent = (document.body.dataset.i18nHost || 'host') + ' .' + (idx + 1);
       });
     }
   }

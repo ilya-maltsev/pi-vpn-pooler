@@ -17,12 +17,6 @@
 
     <span class="env-pill"><span class="dot"></span>pi.corp.local</span>
 
-    <button type="button" class="search" data-action="open-palette">
-        {% include 'pooler/_icon.html' with name='search' %}
-        <span>{% trans "Search…" %}</span>
-        <span class="kbd">⌘K</span>
-    </button>
-
     <form action="{% url 'set_language' %}" method="post" class="lang-switch">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.path }}">
