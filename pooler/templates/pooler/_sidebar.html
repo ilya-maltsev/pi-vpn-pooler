@@ -11,12 +11,6 @@
     </div>
 
     <nav class="side-nav">
-        <button type="button" class="side-link" data-action="open-palette" style="margin-bottom:6px;" title="{% trans 'Quick search' %}">
-            {% include 'pooler/_icon.html' with name='search' %}
-            <span class="side-label">{% trans "Quick search" %}</span>
-            <span class="kbd">⌘K</span>
-        </button>
-
         <div class="side-section">{% trans "Monitor" %}</div>
         <a href="{% url 'dashboard' %}" class="side-link {% if page == 'dashboard' %}active{% endif %}" title="{% trans 'Overview' %}">
             {% include 'pooler/_icon.html' with name='dashboard' %}

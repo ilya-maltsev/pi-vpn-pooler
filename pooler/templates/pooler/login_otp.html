@@ -40,6 +40,17 @@
             <div style="margin-top:12px;text-align:center">
                 <a href="{% url 'logout' %}" style="color:var(--mut);font-size:12px">{% trans "Sign out" %}</a>
             </div>
+            <div style="margin-top:12px;text-align:center">
+                <form action="{% url 'set_language' %}" method="post" class="lang-switch" style="display:inline-flex;gap:4px">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    {% get_current_language as CUR %}
+                    {% get_available_languages as LANGS %}
+                    {% for code, name in LANGS %}
+                        <button type="submit" name="language" value="{{ code }}" class="lang-btn {% if code == CUR %}on{% endif %}">{{ code|upper }}</button>
+                    {% endfor %}
+                </form>
+            </div>
         </div>
     </div>
 </body>

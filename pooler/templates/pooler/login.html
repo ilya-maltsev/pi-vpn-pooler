@@ -37,6 +37,17 @@
                 </div>
                 <button type="submit" class="btn accent" style="width:100%;justify-content:center;margin-top:4px">{% trans "Sign in" %}</button>
             </form>
+            <div style="margin-top:16px;display:flex;justify-content:center;gap:4px">
+                {% get_current_language as CUR %}
+                {% get_available_languages as LANGS %}
+                {% for code, name in LANGS %}
+                <form action="{% url 'set_language' %}" method="post" style="margin:0">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <button type="submit" name="language" value="{{ code }}" class="lang-btn {% if code == CUR %}on{% endif %}">{{ code|upper }}</button>
+                </form>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </body>

@@ -813,3 +813,22 @@ body.dense { --density: 0.85; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--mut-2); }
+
+/* autocomplete dropdown */
+.card:has(.ac-wrap) { overflow: visible; }
+.ac-wrap { position: relative; z-index: 100; }
+.ac-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 999;
+  margin-top: 2px; padding: 4px 0;
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius-s);
+  max-height: 200px; overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,.35);
+}
+.ac-item {
+  padding: 5px 10px; font-size: 12.5px; cursor: pointer;
+  color: var(--fg); font-family: var(--mono);
+}
+.ac-item:hover, .ac-item.active { background: var(--bg-3); }
+.ac-empty {
+  padding: 8px 10px; font-size: 12px; color: var(--mut);
+}

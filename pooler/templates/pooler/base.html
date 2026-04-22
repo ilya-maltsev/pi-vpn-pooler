@@ -9,7 +9,17 @@
     <link rel="stylesheet" href="{% static 'pooler/style.css' %}">
     {% block head %}{% endblock %}
 </head>
-<body>
+<body
+    data-i18n-copied="{% trans '✓ copied' %}"
+    data-i18n-cancel="{% trans 'Cancel' %}"
+    data-i18n-confirm="{% trans 'Confirm' %}"
+    data-i18n-palette-placeholder="{% trans 'Type a command or search…' %}"
+    data-i18n-no-matches="{% trans 'No matches.' %}"
+    data-i18n-navigate="{% trans 'navigate' %}"
+    data-i18n-select="{% trans 'select' %}"
+    data-i18n-close="{% trans 'close' %}"
+    data-i18n-host="{% trans 'host' %}"
+>
     <div class="app">
         {% include 'pooler/_sidebar.html' %}
         <main class="main">
