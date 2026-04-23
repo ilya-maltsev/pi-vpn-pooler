@@ -2,6 +2,7 @@
 import base64
 import json
 import logging
+import time
 
 from django.conf import settings
 from django.contrib import messages
@@ -23,14 +24,32 @@ from .view_helpers import palette_context, pool_subnet_context
 log = logging.getLogger('pooler')
 
 
-def _extract_realm(token):
-    """Extract realm from a PI JWT payload. Returns '' on failure."""
+def _jwt_payload(token):
+    """Decode a JWT's payload. Returns {} on failure."""
     try:
         payload_b64 = token.split('.')[1]
         payload_b64 += '=' * (-len(payload_b64) % 4)
-        return json.loads(base64.urlsafe_b64decode(payload_b64)).get('realm', '')
+        return json.loads(base64.urlsafe_b64decode(payload_b64))
     except Exception:
-        return ''
+        return {}
+
+
+def _extract_realm(token):
+    """Extract realm from a PI JWT payload. Returns '' on failure."""
+    return _jwt_payload(token).get('realm', '')
+
+
+def _bind_session_to_jwt(request, token):
+    """Pin the Django session cookie to expire when the JWT does.
+
+    PI controls JWT lifetime via its policies, not us — so the cookie
+    should follow the token, not a hard-coded SESSION_COOKIE_AGE.
+    """
+    exp = _jwt_payload(token).get('exp')
+    if exp:
+        remaining = int(exp - time.time())
+        if remaining > 0:
+            request.session.set_expiry(remaining)
 
 
 # --- auth --------------------------------------------------------------------
@@ -89,6 +108,7 @@ def login_view(request):
         request.session['pi_realm'] = _extract_realm(token)
         request.session['pi_2fa_ok'] = True
         request.session['pi_needs_otp'] = False
+        _bind_session_to_jwt(request, token)
         log.info('Login success user=%s (no TOTP enrolled)', username)
         return redirect('dashboard')
 
@@ -133,6 +153,7 @@ def login_otp_view(request):
         request.session['pi_realm'] = _extract_realm(token)
         request.session['pi_2fa_ok'] = True
         request.session.pop('pi_transaction_id', None)
+        _bind_session_to_jwt(request, token)
         log.info('OTP verified user=%s', username)
         return redirect('dashboard')
 
