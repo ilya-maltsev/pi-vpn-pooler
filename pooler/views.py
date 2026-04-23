@@ -1,6 +1,7 @@
 """Function-based views (GostCA pattern)."""
 import logging
 
+from django.conf import settings
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
@@ -38,20 +39,30 @@ def login_view(request):
             request.session['pi_username'] = username
             request.session['pi_password'] = password
 
-            # Check if user has active TOTP
-            client.set_token(token, username=username, password=password)
-            has_totp = client.has_active_totp(username=username)
-
-            if has_totp:
-                request.session['pi_2fa_ok'] = False
-                request.session['pi_needs_otp'] = True
-                log.info('Login password OK user=%s — OTP required', username)
-                return redirect('login_otp')
-            else:
+            result = client.validate_check(username=username,
+                                           password=password)
+            if result['value']:
+                if settings.PI_REQUIRE_OTP:
+                    log.warning('Login blocked user=%s — OTP required but no TOTP enrolled',
+                                username)
+                    request.session.flush()
+                    messages.error(request, _('OTP is required but you have no TOTP token enrolled. '
+                                              'Contact your administrator.'))
+                    return render(request, 'pooler/login.html')
                 request.session['pi_2fa_ok'] = True
                 request.session['pi_needs_otp'] = False
                 log.info('Login success user=%s (no TOTP enrolled)', username)
                 return redirect('dashboard')
+
+            if result['transaction_id']:
+                request.session['pi_2fa_ok'] = False
+                request.session['pi_needs_otp'] = True
+                request.session['pi_transaction_id'] = result['transaction_id']
+                log.info('Login password OK user=%s — challenge triggered tid=%s',
+                         username, result['transaction_id'])
+                return redirect('login_otp')
+
+            messages.error(request, _('Authentication failed.'))
 
         except PIClientError as e:
             log.warning('Login failed user=%s: %s', username, e)
@@ -60,12 +71,15 @@ def login_view(request):
 
 
 def login_otp_view(request):
-    """OTP step of 2FA login."""
-    # Guard: must have token but not yet 2FA'd
+    """OTP step of 2FA login (challenge-response step 2)."""
     if not request.session.get('pi_token'):
         return redirect('login')
     if request.session.get('pi_2fa_ok'):
         return redirect('dashboard')
+
+    transaction_id = request.session.get('pi_transaction_id')
+    if not transaction_id:
+        return redirect('login')
 
     if request.method == 'POST':
         otp = request.POST.get('otp', '').strip()
@@ -76,9 +90,11 @@ def login_otp_view(request):
         username = request.session.get('pi_username', '')
         client = PIClient()
         try:
-            ok = client.validate_check(username, otp)
-            if ok:
+            result = client.validate_check(password=otp,
+                                           transaction_id=transaction_id)
+            if result['value']:
                 request.session['pi_2fa_ok'] = True
+                request.session.pop('pi_transaction_id', None)
                 log.info('OTP verified user=%s', username)
                 return redirect('dashboard')
             else:

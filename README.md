@@ -16,7 +16,8 @@ privacyIDEA codebase**.
 - **Global uniqueness** — no two users can hold the same IP address across *any* pool
 - **Multiple addresses** — a user can have IPs from different pools (e.g. `VPN1-IP`, `VPN2-IP`)
 - **Release** — free an IP and remove the custom attribute from privacyIDEA
-- **Sync** — rebuild local allocation cache from the actual privacyIDEA state
+- **Live allocations** — no local cache; allocation state is always read fresh from privacyIDEA
+- **2FA login** — challenge-response TOTP via privacyIDEA `/validate/check` with optional strict mode (`PI_REQUIRE_OTP`)
 - **Dashboard** — stats row, pool cards with subnet-grid visualisation, recent allocations, pool health
 - **Subnet map** — per-pool grid, one cell per host (`gateway` in warn, `used` in accent, free in surface)
 - **Cross-pool allocations view** — search, pool filter, pager
@@ -33,19 +34,20 @@ privacyIDEA codebase**.
 ```
 Browser ──> [ pi-vpn-pooler :5000 ] ── PI REST API ──> [ reverse_proxy :8443 ] ──> [ privacyidea :8080 ]
                    │                                                                        │
-              [ PostgreSQL ]                                                           [ MariaDB ]
-              - vpn_pool                                                     - customuserattribute
-              - allocation
-              - sync_log
+              [ pools.yaml ]                                                          [ PostgreSQL ]
+              pool definitions                                                  - customuserattribute
+              (Docker volume)                                                   (source of truth)
 ```
 
 | Component | Role |
 |-----------|------|
 | **pi-vpn-pooler** | Django 4.2+, manages pools and allocations |
-| **PostgreSQL 16** | Stores pool definitions and allocation cache |
-| **privacyIDEA** | Source of truth for custom user attributes |
+| **pools.yaml** | YAML file with pool definitions (Docker volume, thread-safe writes) |
+| **privacyIDEA** | Source of truth for custom user attributes (all allocations) |
 
-The pooler never writes directly to the PI database.  All mutations go through
+No local database. Pool definitions are stored in a YAML file. Allocations are
+always queried live from privacyIDEA — the pooler never caches allocation state.
+The pooler never writes directly to the PI database. All mutations go through
 the PI REST API (`POST /user/attribute`, `DELETE /user/attribute/…`).
 
 ---
@@ -55,11 +57,11 @@ the PI REST API (`POST /user/attribute`, `DELETE /user/attribute/…`).
 | Layer | Technology |
 |-------|------------|
 | Backend | Python 3.13, Django 4.2+ |
-| Database | PostgreSQL 16 |
+| Storage | YAML file (pools), signed cookies (sessions), no database |
 | PI integration | `requests` library, PI REST API with JWT auth |
-| Frontend | Server-side Jinja2-style Django templates |
+| Frontend | Server-side Django templates |
 | WSGI server | Gunicorn (production) |
-| Reverse proxy | Nginx 1.27 with self-signed TLS (production) |
+| Reverse proxy | Nginx (self-signed TLS, production) |
 | CSS | Token-based design system (oklch accents, dark default + light theme), no Bootstrap / Tailwind |
 | Tables | Native — server-rendered + vanilla JS for sort/filter (`static/pooler/table.js`) |
 | Icons | Inline SVG sprite (`static/pooler/icons.svg`) with `<use href="#name"/>` |
@@ -81,16 +83,14 @@ make help         # Show all available targets
 | Target | Description |
 |--------|-------------|
 | `make cert` | Generate self-signed SSL certificates (10 years) |
-| `make secrets` | Generate random `DJANGO_SECRET_KEY` and `DB_PASSWORD` |
-| `make dev` | Start development stack (runserver + hot-reload) |
+| `make secrets` | Generate random `DJANGO_SECRET_KEY` |
+| `make dev` | Start development stack (gunicorn + hot-reload) |
 | `make stack` | Start production stack (gunicorn + nginx SSL) |
 | `make build` | Build Docker image |
 | `make stop` | Stop production stack |
 | `make stop-dev` | Stop development stack |
 | `make logs` | Show production app logs |
 | `make logs-dev` | Show development app logs |
-| `make shell` | Open Django shell in dev container |
-| `make migrate` | Run migrations in dev container |
 | `make clean` | Stop and remove all containers (preserves volumes) |
 | `make distclean` | Remove containers **and** volumes (data loss!) |
 
@@ -113,24 +113,20 @@ make dev
 # docker compose -f docker-compose.dev.yaml up -d
 ```
 
-This starts two containers:
-
-| Service | Port | Description |
-|---------|------|-------------|
-| `app`   | `localhost:5000` | Django dev server (auto-reload) |
-| `db`    | `localhost:5433` | PostgreSQL 16 |
-
-Migrations run automatically on startup.
-
 ### 2. Open the UI
 
 Navigate to **http://localhost:5000** and log in with your **privacyIDEA admin
 credentials** (the same username/password you use for the PI admin panel).
 
+If the user has an enrolled TOTP token and the `challenge_response` policy is
+configured, a second step will prompt for a 6-digit OTP code.
+
 ### 3. Configure privacyIDEA policies
 
-Before the pooler can set custom attributes, PI must allow it.  In the PI admin
-panel create a policy:
+Before the pooler can set custom attributes and use challenge-response 2FA,
+PI must have the right policies. In the PI admin panel create:
+
+**Admin policy** (for custom attributes):
 
 | Field | Value |
 |-------|-------|
@@ -139,8 +135,21 @@ panel create a policy:
 | **Action** | `delete_custom_user_attributes` = `*` |
 | **Admin realm** | *(your admin realm)* |
 
-This permits any attribute key with any value.  You can restrict it to specific
+This permits any attribute key with any value. You can restrict it to specific
 keys (e.g. `VPN1-IP: *, VPN2-IP: *`) for tighter control.
+
+**Authentication policy** (for challenge-response 2FA):
+
+| Field | Value |
+|-------|-------|
+| **Scope** | `authentication` |
+| **Action** | `challenge_response` = `totp` |
+| **Action** | `otppin` = `userstore` |
+| **Action** | `passOnNoToken` = `true` |
+
+This enables the 2-step login flow: password triggers a TOTP challenge,
+then the user enters the OTP code to complete authentication. Users without
+an enrolled TOTP token are allowed in (unless `PI_REQUIRE_OTP=true`).
 
 ### 4. Create a pool and allocate
 
@@ -155,11 +164,11 @@ keys (e.g. `VPN1-IP: *, VPN2-IP: *`) for tighter control.
 
 ## Production Deployment (Standalone)
 
-The production stack runs three containers: **PostgreSQL**, **Django + Gunicorn**,
-and **Nginx** (SSL termination).
+The production stack runs two containers: **Django + Gunicorn** and **Nginx**
+(SSL termination). No database.
 
 ```
-Browser ──HTTPS──> [ nginx :5443 ] ──HTTP──> [ gunicorn :8000 ] ──> [ PostgreSQL ]
+Browser ──HTTPS──> [ nginx :5443 ] ──HTTP──> [ gunicorn :8000 ]
                    (self-signed TLS)          (3 workers)
 ```
 
@@ -167,18 +176,17 @@ Browser ──HTTPS──> [ nginx :5443 ] ──HTTP──> [ gunicorn :8000 ] 
 
 ```bash
 make cert      # creates templates/pi.pem + templates/pi.key (10-year self-signed)
-make secrets   # prints random DJANGO_SECRET_KEY and DB_PASSWORD
+make secrets   # prints random DJANGO_SECRET_KEY
 ```
 
 ### 2. Configure environment
 
-Edit `environment/application-prod.env` and replace `changeme` values with the
-generated secrets:
+Edit `environment/application-pooler.env` and replace `changeme` values:
 
 ```env
 DJANGO_SECRET_KEY=<from make secrets>
-DB_PASSWORD=<from make secrets>
 PI_API_URL=https://reverse_proxy    # or your PI address
+PI_REQUIRE_OTP=true                 # deny login for users without TOTP
 PROXY_PORT=5443                     # external HTTPS port
 SERVERNAME=vpn-pooler.example.com   # for nginx server_name
 CSRF_TRUSTED_ORIGINS=https://vpn-pooler.example.com
@@ -203,7 +211,7 @@ make distclean  # remove containers + volumes (confirmation required)
 ### Alternative: embed in the main PI stack
 
 You can also add the pooler as a service in the main
-`privacyidea-docker/docker-compose.yaml` (without its own nginx).  See the
+`privacyidea-docker/docker-compose.yaml` (without its own nginx). See the
 `docker-compose.yaml` in this directory for the service definitions to copy.
 
 ---
@@ -227,15 +235,11 @@ You can also add the pooler as a service in the main
 | `SYSLOG_TAG` | `pi-vpn-pooler` | Syslog program name / ident |
 | `SYSLOG_LEVEL` | `INFO` | Minimum level forwarded: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Set to `DEBUG` to capture full HTTP request/response packets against the privacyIDEA API. |
 
-### Database
+### Pool storage
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_NAME` | `vpn_pooler` | PostgreSQL database name |
-| `DB_USER` | `vpn_pooler` | PostgreSQL user |
-| `DB_PASSWORD` | `vpn_pooler` | PostgreSQL password |
-| `DB_HOST` | `127.0.0.1` | PostgreSQL host |
-| `DB_PORT` | `5432` | PostgreSQL port |
+| `POOLS_FILE` | `/app/data/pools.yaml` | Path to the YAML file storing pool definitions |
 
 ### privacyIDEA
 
@@ -243,6 +247,52 @@ You can also add the pooler as a service in the main
 |----------|---------|-------------|
 | `PI_API_URL` | `https://localhost:8443` | privacyIDEA API base URL |
 | `PI_VERIFY_SSL` | `false` | Verify TLS certificate of PI |
+| `PI_REQUIRE_OTP` | `false` | Strict 2FA mode. When `true`, users without an enrolled TOTP token are denied login. When `false`, users without TOTP are allowed in after password authentication. |
+
+---
+
+## Authentication Flow
+
+The pooler has no local user database. All authentication is delegated to
+privacyIDEA using a two-step challenge-response flow via `/validate/check`.
+
+### Step 1 — Password + challenge trigger
+
+```
+User submits username + password
+  → POST /auth  →  JWT token (stored in session for PI API calls)
+  → POST /validate/check { user, pass=password }
+     ├─ value=true  → no TOTP enrolled → login complete (unless PI_REQUIRE_OTP=true)
+     └─ transaction_id returned → TOTP challenge triggered → redirect to OTP page
+```
+
+### Step 2 — OTP verification
+
+```
+User submits 6-digit TOTP code
+  → POST /validate/check { transaction_id, pass=OTP }
+     ├─ value=true  → login complete → redirect to dashboard
+     └─ value=false → invalid code → retry
+```
+
+The `transaction_id` ties the two requests together — PI remembers the password
+validation from step 1. Step 2 sends only `transaction_id` + `pass` (the OTP),
+no `user` field needed.
+
+### Strict OTP mode (`PI_REQUIRE_OTP`)
+
+| `PI_REQUIRE_OTP` | User has TOTP | Result |
+|-------------------|---------------|--------|
+| `false` (default) | No | Login allowed after password |
+| `false` | Yes | Must complete OTP challenge |
+| `true` | No | **Login denied** — "contact administrator" |
+| `true` | Yes | Must complete OTP challenge |
+
+### Session guard
+
+All protected views use the `@pi_auth_required` decorator, which checks:
+1. `pi_token` in session → if missing, redirect to `/login/`
+2. `pi_2fa_ok` in session → if `False`, redirect to `/login/otp/`
 
 ---
 
@@ -252,33 +302,32 @@ You can also add the pooler as a service in the main
 pi-vpn-pooler/
 ├── Makefile                        # Build/deploy targets (cert, secrets, dev, stack…)
 ├── manage.py
-├── requirements.txt                # Django, psycopg2, whitenoise, requests, gunicorn
+├── requirements.txt                # Django, whitenoise, requests, gunicorn, pyyaml
 ├── Dockerfile                      # Python 3.13 + gunicorn (production CMD)
-├── docker-compose.yaml             # Production: postgres + gunicorn + nginx SSL
-├── docker-compose.dev.yaml         # Development: postgres + runserver (hot-reload)
+├── docker-compose.yaml             # Production: gunicorn + nginx SSL
+├── docker-compose.dev.yaml         # Development: gunicorn with --reload
 ├── environment/
-│   └── application-prod.env        # Production env template
+│   └── application-pooler.env      # Standalone env template
 ├── templates/
-│   ├── nginx.conf.template         # Nginx reverse proxy config (SSL termination)
-│   ├── pi.pem                      # Generated certificate (gitignored)
-│   └── pi.key                      # Generated private key (gitignored)
+│   └── nginx.conf.template         # Nginx reverse proxy config (SSL termination)
+├── data/
+│   └── pools.yaml                  # Pool definitions (YAML, Docker volume)
 ├── config/
-│   ├── settings.py                 # Django settings (env-driven)
+│   ├── settings.py                 # Django settings (env-driven, no database)
 │   ├── urls.py                     # Root URL config
 │   └── wsgi.py                     # WSGI entrypoint
 ├── pooler/                         # Main Django application
-│   ├── models.py                   # VpnPool, Allocation, SyncLog
-│   ├── views.py                    # Function-based views
-│   ├── urls.py                     # URL routing (14 routes)
-│   ├── pi_client.py                # privacyIDEA REST API client
-│   ├── pool_service.py             # Business logic
+│   ├── pi_client.py                # privacyIDEA REST API client (challenge-response)
+│   ├── views.py                    # Function-based views (login, 2FA, pools, allocations)
+│   ├── urls.py                     # URL routing (15 routes)
+│   ├── pool_store.py               # YAML-backed pool storage (thread-safe, file-locked)
+│   ├── pool_service.py             # Business logic (allocate, release, validation)
+│   ├── live.py                     # Live allocation queries from PI (no local cache)
 │   ├── ip_utils.py                 # CIDR / IP helpers
-│   ├── decorators.py               # @pi_auth_required
-│   ├── context_processors.py       # PI status injection
-│   ├── management/commands/
-│   │   └── sync_pools.py           # CLI sync command
-│   ├── migrations/
-│   │   └── 0001_initial.py
+│   ├── decorators.py               # @pi_auth_required (JWT + 2FA guard)
+│   ├── context_processors.py       # PI status injection (auth state, username)
+│   ├── view_helpers.py             # Subnet grid / palette context builders
+│   ├── models.py                   # Empty (no ORM models)
 │   ├── templates/pooler/
 │   │   ├── base.html               # Layout (sidebar + topbar + palette slot)
 │   │   ├── _sidebar.html           # Left rail nav with section counts
@@ -289,57 +338,24 @@ pi-vpn-pooler/
 │   │   ├── _status_dot.html        # 6px status dot with soft ring
 │   │   ├── _subnet_grid.html       # Subnet-map host grid (rendered client-side)
 │   │   ├── _icon.html              # <use href="#name"/> wrapper for the SVG sprite
-│   │   ├── login.html              # Minimal sign-in card (reuses the same token palette)
-│   │   ├── dashboard.html          # Overview: stats + pool cards + recent + health
+│   │   ├── login.html              # Sign-in card (username + password)
+│   │   ├── login_otp.html          # OTP step (6-digit TOTP code)
+│   │   ├── dashboard.html          # Overview: stats + pool cards + subnet grids
 │   │   ├── pool_list.html          # Sortable + per-column filter table
-│   │   ├── pool_detail.html        # Stats + subnet map + details + allocate + allocations
+│   │   ├── pool_detail.html        # Stats + subnet map + allocate form + allocations
 │   │   ├── pool_form.html          # Create / edit pool
-│   │   ├── allocation_list.html    # Cross-pool search + pager
-│   │   └── sync.html               # Two-up last/schedule + history
+│   │   └── allocation_list.html    # Cross-pool search + pager
 │   └── static/pooler/
 │       ├── style.css               # Token-based design system
 │       ├── icons.svg               # SVG sprite (lucide-style, 1.6 stroke)
+│       ├── favicon.svg             # Favicon
 │       ├── app.js                  # Sidebar toggle, g-chords, confirm modal, copy-on-click
 │       ├── palette.js              # ⌘K command palette
 │       ├── table.js                # Sortable headers + per-column filter
 │       ├── subnet.js               # Subnet-grid cell renderer
 │       └── toast.js                # Promotes Django messages to toasts
-├── locale/                         # i18n translations (ru, en)
-└── view_helpers.py                 # subnet/palette/counts context builders
+└── locale/                         # i18n translations (ru, en)
 ```
-
----
-
-## Data Model
-
-### VpnPool
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | `CharField(unique)` | Pool name, e.g. `VPN1` |
-| `cidr` | `CharField` | Network in CIDR notation, e.g. `172.20.50.0/24` |
-| `attr_key` | `CharField(unique)` | Custom attribute key in PI, e.g. `VPN1-IP` |
-| `gateway_ip` | `GenericIPAddressField` | Optional gateway (excluded from allocation) |
-| `description` | `TextField` | Free-text description |
-
-### Allocation
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `pool` | `ForeignKey(VpnPool)` | Parent pool |
-| `ip_address` | `GenericIPAddressField(unique)` | **Globally unique** IP address |
-| `username` | `CharField` | PI username |
-| `realm` | `CharField` | PI realm |
-| `attr_key` | `CharField` | Attribute key used in PI |
-
-**Constraints:**
-- `ip_address` is globally unique — no IP can be assigned to two users even across different pools
-- `(pool, username, realm)` is unique — one IP per user per pool
-
-### SyncLog
-
-Tracks sync operations with timestamps, status (`running` / `success` / `error`),
-and details.
 
 ---
 
@@ -347,17 +363,18 @@ and details.
 
 | Method | Path | View | Description |
 |--------|------|------|-------------|
-| GET | `/` | `dashboard_view` | Pool overview with utilisation cards |
-| GET/POST | `/login/` | `login_view` | Authenticate via PI JWT |
+| GET/POST | `/login/` | `login_view` | Password authentication via PI JWT |
+| GET/POST | `/login/otp/` | `login_otp_view` | OTP verification (challenge-response step 2) |
 | GET | `/logout/` | `logout_view` | Clear session |
-| GET | `/pools/` | `pool_list_view` | List all pools (DataTable) |
+| GET | `/` | `dashboard_view` | Pool overview with utilisation cards |
+| GET | `/pools/` | `pool_list_view` | List all pools |
 | GET/POST | `/pools/create/` | `pool_create_view` | Create a new pool |
 | GET | `/pools/<id>/` | `pool_detail_view` | Pool detail + allocations + allocate form |
 | GET/POST | `/pools/<id>/edit/` | `pool_edit_view` | Edit pool metadata |
 | POST | `/pools/<id>/delete/` | `pool_delete_view` | Delete pool (only if empty) |
 | POST | `/pools/<id>/allocate/` | `allocate_view` | Allocate IP to user |
-| POST | `/pools/<id>/release/<ip>/` | `release_view` | Release IP from user |
-| GET/POST | `/sync/` | `sync_view` | Sync history / trigger sync |
+| POST | `/pools/<id>/release/` | `release_view` | Release IP from user |
+| GET | `/allocations/` | `allocation_list_view` | Cross-pool search + pager |
 | GET | `/api/users/?realm=X` | `api_users` | JSON: usernames for autocomplete |
 | GET | `/api/pools/<id>/free-ips/` | `api_free_ips` | JSON: free IPs in pool |
 
@@ -365,52 +382,35 @@ and details.
 
 ## How It Works
 
-### Authentication
-
-The pooler has no local user database.  Login credentials are forwarded to
-privacyIDEA's `POST /auth` endpoint to obtain a JWT token.  The token is stored
-in the Django session and used for all subsequent PI API calls.  When the JWT
-expires, the user is redirected back to the login page.
-
 ### IP Allocation Flow
 
 ```
 1. Admin selects pool, realm, username, IP (or "Next available")
-2. Local check  ─── Allocation.objects.filter(ip_address=ip) ── taken? REJECT
-3. Local check  ─── Allocation per user per pool ────────────── exists? REJECT
-4. Fresh PI check ── GET /user/?realm=* ── scan ALL custom attrs ── found? REJECT
-5. PI API call  ─── POST /user/attribute {user, realm, key, value}
-6. Success      ─── Create local Allocation record
+2. Live PI check ── query all users in realm ─── IP already used? REJECT
+3. Live PI check ── user already has IP in pool? ─────────────── REJECT
+4. Cross-realm PI scan ── GET /user/ for ALL realms ── IP found? REJECT
+5. PI API call ── POST /user/attribute {user, realm, key, value}
+6. Success ── redirect back, fresh live query confirms allocation
 ```
 
-The double-check (local cache + fresh PI scan) prevents race conditions and
-catches attributes set directly in the PI admin panel.
+Every allocation check queries privacyIDEA live. There is no local cache to go
+stale. The cross-realm scan (step 4) ensures global IP uniqueness even if
+attributes were set directly in the PI admin panel.
 
-### Sync
+### Pool Storage
 
-Sync rebuilds the local `Allocation` table from the actual PI state:
+Pools are stored in `/app/data/pools.yaml` (mounted as a Docker volume).
+Writes use `fcntl.flock()` for thread safety across gunicorn workers.
 
-1. Fetch all realms from PI (`GET /realm/`)
-2. For each realm, fetch all users with custom attributes (`GET /user/?realm=X`)
-3. For each user attribute that matches a known pool's `attr_key` and contains
-   a valid IP within the pool's CIDR — create an `Allocation` record
-4. Remove stale entries that no longer exist in PI
-
-Sync can be triggered:
-- **UI** — "Sync Now" button on the dashboard or sync page
-- **CLI** — `python manage.py sync_pools --username admin --password secret`
-
----
-
-## Management Commands
-
-### sync_pools
-
-Sync allocations from privacyIDEA (useful for cron jobs):
-
-```bash
-docker compose -f docker-compose.dev.yaml exec app \
-  python manage.py sync_pools --username admin --password admin
+```yaml
+pools:
+  - id: a1b2c3d4
+    name: VPN1
+    cidr: 172.20.50.0/24
+    attr_key: VPN1-IP
+    description: Main VPN pool
+    gateway_ip: 172.20.50.1
+    created_at: '2024-01-15T10:30:00+00:00'
 ```
 
 ---
@@ -419,8 +419,8 @@ docker compose -f docker-compose.dev.yaml exec app \
 
 | Rule | Enforcement |
 |------|-------------|
-| IP globally unique | `Allocation.ip_address` has `unique=True` + fresh PI scan before allocation |
-| One IP per user per pool | `UniqueConstraint(pool, username, realm)` |
+| IP globally unique | Live cross-realm PI scan before every allocation |
+| One IP per user per pool | Live check against current PI user attributes |
 | CIDR overlap prevention | `ipaddress.ip_network.overlaps()` checked on pool creation |
 | Network/broadcast excluded | `ipaddress.ip_network.hosts()` skips them automatically |
 | Gateway excluded | Removed from free IP list if configured |
@@ -438,31 +438,32 @@ docker compose -f docker-compose.dev.yaml exec app \
 - From inside Docker network, PI is reached via `https://reverse_proxy`
 - From the host, PI is reached via `https://localhost:8443`
 
+### "OTP is required but you have no TOTP token enrolled"
+
+This error appears when `PI_REQUIRE_OTP=true` and the user has no TOTP token.
+Either enrol a TOTP token for the user, or set `PI_REQUIRE_OTP=false`.
+
 ### "Failed to set attribute" on allocation
 
 - Ensure the PI admin policy `set_custom_user_attributes` is configured
   (Config > Policies > create a policy with scope `admin`)
 - The policy must allow the attribute key used by the pool (e.g. `VPN1-IP: *`)
 
-### Allocations out of sync
+### Challenge not triggered (no OTP prompt)
 
-Click **Sync Now** on the dashboard, or run:
-
-```bash
-docker compose -f docker-compose.dev.yaml exec app \
-  python manage.py sync_pools --username admin --password admin
-```
+- Ensure the `authentication` policy is configured with `challenge_response: totp`
+  and `otppin: userstore` (see [Configure privacyIDEA policies](#3-configure-privacyidea-policies))
+- Ensure the user has an active, non-revoked TOTP token enrolled
 
 ### Container won't start
 
 ```bash
 docker compose -f docker-compose.dev.yaml logs app
-docker compose -f docker-compose.dev.yaml logs db
 ```
 
 Common issues:
-- PostgreSQL not ready yet (the healthcheck handles this, but first start takes ~10s)
-- Port 5000 already in use — change `VPN_POOLER_PORT` in the environment
+- Port 5000 already in use — change `PROXY_PORT` in the environment
+- PI not reachable — check `PI_API_URL`
 
 ---
 
@@ -474,7 +475,7 @@ Console logging (stdout) is always on. Remote rsyslog forwarding is opt-in via `
 
 | Level | What you get |
 |-------|--------------|
-| `INFO` (default) | One-line operational events: login success/failure, logout, pool create/delete, IP allocate/release, sync start/complete, PI API errors. Safe for production. |
+| `INFO` (default) | One-line operational events: login success/failure, logout, OTP challenge triggered/verified, pool create/delete, IP allocate/release, PI API errors. Safe for production. |
 | `DEBUG` | Everything at INFO, plus full HTTP request/response packet dumps for every privacyIDEA API call (see below). Verbose — intended for troubleshooting. |
 
 ### Full-packet DEBUG dumps
@@ -516,7 +517,7 @@ SYSLOG_LEVEL=DEBUG
 ### Starting the dev environment
 
 ```bash
-make dev        # start dev stack (postgres + runserver on :5000)
+make dev        # start dev stack (gunicorn with --reload on :5000)
 make logs-dev   # tail logs
 make stop-dev   # stop
 ```
@@ -526,18 +527,14 @@ make stop-dev   # stop
 All Python commands run inside Docker (never on the host):
 
 ```bash
-make shell      # Django shell
-make migrate    # Apply migrations
-
 # Or directly:
-docker compose -f docker-compose.dev.yaml exec app python manage.py makemigrations
 docker compose -f docker-compose.dev.yaml exec app python manage.py collectstatic --noinput
 ```
 
 ### Live reload
 
-The dev compose file mounts the project directory as a volume (`.:/app`), so
-code changes are picked up automatically by the Django dev server.
+The dev compose file mounts the project directory as a volume, so code changes
+are picked up automatically by gunicorn `--reload`.
 
 ### Rebuilding after dependency changes
 

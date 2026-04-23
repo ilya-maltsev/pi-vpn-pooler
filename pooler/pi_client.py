@@ -292,12 +292,27 @@ class PIClient:
             log.warning('list_tokens failed for user=%s — treating as no TOTP', username)
             return False
 
-    def validate_check(self, username, otp, realm=None):
-        """Validate a OTP via /validate/check. Returns True on success."""
-        log.debug('PI POST /validate/check user=%s', username)
-        data = {'user': username, 'pass': otp}
+    def validate_check(self, username=None, password='', realm=None,
+                       transaction_id=None):
+        """POST /validate/check — supports challenge-response.
+
+        Step 1 (trigger):  ``validate_check(username, password, realm=…)``
+        Step 2 (answer):   ``validate_check(password=otp, transaction_id=tid)``
+
+        Returns a dict:
+          value          – True if authentication succeeded
+          transaction_id – challenge transaction ID (present when a challenge
+                           was triggered, i.e. password valid but OTP required)
+          message        – human-readable message from PI
+          multi_challenge – list of per-token challenge details
+        """
+        data = {'pass': password}
+        if username:
+            data['user'] = username
         if realm:
             data['realm'] = realm
+        if transaction_id:
+            data['transaction_id'] = transaction_id
         resp = self._request(
             'POST',
             f'{self.base_url}/validate/check',
@@ -305,13 +320,29 @@ class PIClient:
             verify=self.verify_ssl,
             timeout=15,
         )
-        result = resp.json().get('result', {})
-        ok = result.get('status', False) and result.get('value', False)
-        if ok:
-            log.info('OTP validation success user=%s', username)
+        try:
+            body = resp.json()
+        except ValueError:
+            raise PIClientError(f'Invalid response from PI (HTTP {resp.status_code})')
+        result = body.get('result', {})
+        if not result.get('status'):
+            msg = result.get('error', {}).get('message', 'validate/check failed')
+            raise PIClientError(msg)
+        detail = body.get('detail', {}) or {}
+        value = bool(result.get('value'))
+        tid = detail.get('transaction_id')
+        if value:
+            log.info('validate/check success user=%s', username)
+        elif tid:
+            log.info('validate/check challenge triggered user=%s tid=%s', username, tid)
         else:
-            log.warning('OTP validation failed user=%s', username)
-        return ok
+            log.warning('validate/check failed user=%s', username)
+        return {
+            'value': value,
+            'transaction_id': tid,
+            'message': detail.get('message', ''),
+            'multi_challenge': detail.get('multi_challenge', []),
+        }
 
     # --- scan all users for IP uniqueness ------------------------------------
 

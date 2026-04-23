@@ -7,6 +7,7 @@ services:
     environment:
       PI_API_URL: ${PI_API_URL:-https://host.docker.internal:8443}
       PI_VERIFY_SSL: ${PI_VERIFY_SSL:-false}
+      PI_REQUIRE_OTP: ${PI_REQUIRE_OTP:-false}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-changeme}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}

@@ -89,6 +89,7 @@ POOLS_FILE = os.environ.get('POOLS_FILE', str(BASE_DIR / 'data' / 'pools.yaml'))
 # --- privacyIDEA connection ---------------------------------------------------
 PI_API_URL = os.environ.get('PI_API_URL', 'https://localhost:8443')
 PI_VERIFY_SSL = os.environ.get('PI_VERIFY_SSL', 'false').lower() in ('true', '1', 'yes')
+PI_REQUIRE_OTP = os.environ.get('PI_REQUIRE_OTP', 'false').lower() in ('true', '1', 'yes')
 
 # --- Logging -----------------------------------------------------------------
 SYSLOG_ENABLED = os.environ.get('SYSLOG_ENABLED', 'false').lower() in ('true', '1', 'yes')
