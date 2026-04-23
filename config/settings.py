@@ -61,7 +61,7 @@ SESSION_COOKIE_AGE = 86400  # 24 hours
 
 from django.utils.translation import gettext_lazy as _
 
-LANGUAGE_CODE = 'ru'
+LANGUAGE_CODE = os.environ.get('DJANGO_LANGUAGE_CODE', 'en')
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_L10N = True

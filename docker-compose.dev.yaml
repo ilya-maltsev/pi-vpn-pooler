@@ -11,6 +11,7 @@ services:
       DJANGO_SECRET_KEY: dev-secret-key-not-for-production
       DJANGO_DEBUG: "true"
       DJANGO_ALLOWED_HOSTS: "*"
+      DJANGO_LANGUAGE_CODE: en
       POOLS_FILE: /app/data/pools.yaml
     ports:
       - "5000:8000"

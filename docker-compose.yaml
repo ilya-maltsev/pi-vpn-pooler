@@ -13,6 +13,7 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-https://localhost:5443}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      DJANGO_LANGUAGE_CODE: ${DJANGO_LANGUAGE_CODE:-en}
       POOLS_FILE: /app/data/pools.yaml
     volumes:
       - staticfiles:/app/staticfiles
