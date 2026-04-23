@@ -89,7 +89,7 @@ class PIClient:
         )
         data = resp.json()
         result = data.get('result', {})
-        if not result.get('status'):
+        if not result.get('status') or not isinstance(result.get('value'), dict):
             msg = result.get('error', {}).get('message', 'Authentication failed')
             log.warning('PI auth failed user=%s: %s', username, msg)
             raise PIClientError(msg)
