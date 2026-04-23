@@ -15,7 +15,7 @@
     </div>
     <div class="spacer"></div>
 
-    <span class="env-pill"><span class="dot"></span>pi.corp.local</span>
+    {% if pi_realm %}<span class="env-pill"><span class="dot"></span>{{ pi_realm }}</span>{% endif %}
 
     <form action="{% url 'set_language' %}" method="post" class="lang-switch">
         {% csrf_token %}

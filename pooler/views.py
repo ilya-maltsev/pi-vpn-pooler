@@ -1,4 +1,6 @@
-"""Function-based views (GostCA pattern)."""
+"""Function-based views."""
+import base64
+import json
 import logging
 
 from django.conf import settings
@@ -19,6 +21,16 @@ from .pool_store import get_all_pools, get_pool_or_404, update_pool
 from .view_helpers import palette_context, pool_subnet_context
 
 log = logging.getLogger('pooler')
+
+
+def _extract_realm(token):
+    """Extract realm from a PI JWT payload. Returns '' on failure."""
+    try:
+        payload_b64 = token.split('.')[1]
+        payload_b64 += '=' * (-len(payload_b64) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload_b64)).get('realm', '')
+    except Exception:
+        return ''
 
 
 # --- auth --------------------------------------------------------------------
@@ -71,6 +83,7 @@ def login_view(request):
             request.session['pi_token'] = token
             request.session['pi_username'] = username
             request.session['pi_password'] = password
+            request.session['pi_realm'] = _extract_realm(token)
             request.session['pi_2fa_ok'] = True
             request.session['pi_needs_otp'] = False
             log.info('Login success user=%s (no TOTP enrolled)', username)
@@ -122,6 +135,7 @@ def login_otp_view(request):
             return render(request, 'pooler/login_otp.html')
 
         request.session['pi_token'] = token
+        request.session['pi_realm'] = _extract_realm(token)
         request.session['pi_2fa_ok'] = True
         request.session.pop('pi_transaction_id', None)
         log.info('OTP verified user=%s', username)

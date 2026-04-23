@@ -312,12 +312,22 @@ msgstr "из"
 msgid "Username and password are required."
 msgstr "Имя пользователя и пароль обязательны."
 
+msgid "Authentication failed."
+msgstr "Ошибка аутентификации."
+
 #, python-format
 msgid "Authentication failed: %(err)s"
 msgstr "Ошибка аутентификации: %(err)s"
 
 msgid "Enter a valid 6-digit code."
 msgstr "Введите корректный 6-значный код."
+
+msgid ""
+"OTP is required but you have no TOTP token enrolled. Contact your "
+"administrator."
+msgstr ""
+"Требуется OTP, но у вас нет привязанного TOTP-токена. Обратитесь к "
+"администратору."
 
 msgid "Invalid code. Please try again."
 msgstr "Неверный код. Попробуйте ещё раз."

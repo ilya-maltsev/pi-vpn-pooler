@@ -4,3 +4,4 @@ data/*.yaml
 !data/.gitkeep
 task_plan.md
 notes.md
+locale/ru/LC_MESSAGES/django.mo
