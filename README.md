@@ -91,6 +91,7 @@ make help         # Show all available targets
 | `make stop-dev` | Stop development stack |
 | `make logs` | Show production app logs |
 | `make logs-dev` | Show development app logs |
+| `make shell` | Open Django shell in dev container |
 | `make clean` | Stop and remove all containers (preserves volumes) |
 | `make distclean` | Remove containers **and** volumes (data loss!) |
 
@@ -527,6 +528,8 @@ make stop-dev   # stop
 All Python commands run inside Docker (never on the host):
 
 ```bash
+make shell      # Django interactive shell
+
 # Or directly:
 docker compose -f docker-compose.dev.yaml exec app python manage.py collectstatic --noinput
 ```

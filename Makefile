@@ -2,11 +2,10 @@ CONTAINER_ENGINE := docker
 TAG := pooler
 
 DJANGO_SECRET := $(shell cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 50 | head -n 1)
-DB_PASSWORD := $(shell cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
 
 SSL_SUBJECT := "/C=DE/ST=SomeState/L=SomeCity/O=VPNPooler/OU=reverseproxy/CN=localhost"
 
-.PHONY: cert secrets dev stack build clean distclean logs shell migrate help
+.PHONY: cert secrets dev stack build clean distclean logs shell help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -23,9 +22,8 @@ secrets: ## Generate random secrets for environment file
 	@echo "Generate new secrets for environment file"
 	@echo "-----------------------------------------"
 	@echo "DJANGO_SECRET_KEY=$(DJANGO_SECRET)"
-	@echo "DB_PASSWORD=$(DB_PASSWORD)"
 	@echo "-----------------------------------------"
-	@echo "Replace these values in environment/application-prod.env"
+	@echo "Replace this value in environment/application-pooler.env"
 
 build: ## Build Docker image
 	${CONTAINER_ENGINE} compose build
@@ -54,9 +52,6 @@ logs-dev: ## Show development app logs
 
 shell: ## Open Django shell in dev container
 	${CONTAINER_ENGINE} compose -f docker-compose.dev.yaml exec app python manage.py shell
-
-migrate: ## Run migrations in dev container
-	${CONTAINER_ENGINE} compose -f docker-compose.dev.yaml exec app python manage.py migrate
 
 clean: ## Stop and remove containers (preserves volumes)
 	@${CONTAINER_ENGINE} compose -p ${TAG} down 2>/dev/null || true
