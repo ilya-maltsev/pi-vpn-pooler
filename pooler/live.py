@@ -50,11 +50,10 @@ def get_pi_client(session) -> PIClient:
     """Build a PIClient from session-stored JWT."""
     token = session.get('pi_token')
     username = session.get('pi_username')
-    password = session.get('pi_password')
     if not token:
         raise PIClientError('Not authenticated with privacyIDEA')
     client = PIClient()
-    client.set_token(token, username=username, password=password)
+    client.set_token(token, username=username)
     return client
 
 
@@ -80,9 +79,6 @@ def live_allocations(session, pool: Pool) -> list[LiveAllocation]:
                 val = str(value)
                 if key == pool.attr_key and is_valid_ipv4(val) and ip_in_cidr(val, pool.cidr):
                     results.append(_make_alloc(pool, val, username, realm, key, now))
-
-    # Propagate possible token refresh
-    session['pi_token'] = client._token
 
     results.sort(key=lambda a: tuple(int(x) for x in a.ip_address.split('.')))
     return results
@@ -129,8 +125,5 @@ def live_allocations_all(session, pools: list[Pool]) -> dict[str, list[LiveAlloc
     # Sort each pool's allocations by IP
     for pool_id in results:
         results[pool_id].sort(key=lambda a: tuple(int(x) for x in a.ip_address.split('.')))
-
-    # Propagate possible token refresh
-    session['pi_token'] = client._token
 
     return results

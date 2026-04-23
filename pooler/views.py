@@ -38,17 +38,14 @@ def _extract_realm(token):
 def login_view(request):
     """Step 1 of login: username + password.
 
-    Uses /validate/check first (not /auth) because the PI challenge_response
-    policy applies to /auth too — calling /auth with a password-only when the
-    user has a TOTP returns a CHALLENGE, not a JWT.
-
-    Flow:
-      * /validate/check value=True  → passOnNoToken (user has no TOTP).
-        Call /auth(password) to get JWT and finish login.
-      * /validate/check transaction_id → challenge triggered. Save password
-        + txn_id in session, redirect to OTP step. JWT is obtained in step 2
-        via /auth(password+otp).
-      * else → bad password.
+    Posts directly to PI /auth.  Three outcomes:
+      * ``{token}``           → passOnNoToken (no TOTP).  Gated by
+                                ``PI_REQUIRE_OTP`` — when set, the user is
+                                refused until they enrol a TOTP.
+      * ``{transaction_id}``  → challenge triggered.  Only the tx_id is
+                                stored in the session; the password is
+                                never persisted.  Redirect to OTP step.
+      * raises PIClientError  → wrong password.
     """
     if request.method == 'POST':
         username = request.POST.get('username', '').strip()
@@ -60,38 +57,14 @@ def login_view(request):
                   request.META.get('REMOTE_ADDR', '?'))
         client = PIClient()
         try:
-            result = client.validate_check(username=username, password=password)
+            result = client.auth(username=username, password=password)
         except PIClientError as e:
             log.warning('Login failed user=%s: %s', username, e)
             messages.error(request, _('Authentication failed: %(err)s') % {'err': e})
             return render(request, 'pooler/login.html')
 
-        if result['value']:
-            # passOnNoToken: password valid, no TOTP enrolled.
-            if settings.PI_REQUIRE_OTP:
-                log.warning('Login blocked user=%s — OTP required but no TOTP enrolled',
-                            username)
-                messages.error(request, _('OTP is required but you have no TOTP token enrolled. '
-                                          'Contact your administrator.'))
-                return render(request, 'pooler/login.html')
-            try:
-                token = client.authenticate(username, password)
-            except PIClientError as e:
-                log.warning('Login /auth failed user=%s: %s', username, e)
-                messages.error(request, _('Authentication failed: %(err)s') % {'err': e})
-                return render(request, 'pooler/login.html')
-            request.session['pi_token'] = token
+        if result.get('transaction_id'):
             request.session['pi_username'] = username
-            request.session['pi_password'] = password
-            request.session['pi_realm'] = _extract_realm(token)
-            request.session['pi_2fa_ok'] = True
-            request.session['pi_needs_otp'] = False
-            log.info('Login success user=%s (no TOTP enrolled)', username)
-            return redirect('dashboard')
-
-        if result['transaction_id']:
-            request.session['pi_username'] = username
-            request.session['pi_password'] = password
             request.session['pi_transaction_id'] = result['transaction_id']
             request.session['pi_2fa_ok'] = False
             request.session['pi_needs_otp'] = True
@@ -99,26 +72,42 @@ def login_view(request):
                      username, result['transaction_id'])
             return redirect('login_otp')
 
-        messages.error(request, _('Authentication failed.'))
+        token = result.get('token')
+        if not token:
+            messages.error(request, _('Authentication failed.'))
+            return render(request, 'pooler/login.html')
+
+        # passOnNoToken: password valid, no TOTP enrolled.
+        if settings.PI_REQUIRE_OTP:
+            log.warning('Login blocked user=%s — OTP required but no TOTP enrolled',
+                        username)
+            messages.error(request, _('OTP is required but you have no TOTP token enrolled. '
+                                      'Contact your administrator.'))
+            return render(request, 'pooler/login.html')
+        request.session['pi_token'] = token
+        request.session['pi_username'] = username
+        request.session['pi_realm'] = _extract_realm(token)
+        request.session['pi_2fa_ok'] = True
+        request.session['pi_needs_otp'] = False
+        log.info('Login success user=%s (no TOTP enrolled)', username)
+        return redirect('dashboard')
+
     return render(request, 'pooler/login.html')
 
 
 def login_otp_view(request):
     """Step 2 of login: OTP answer.
 
-    Calls /auth with password+otp combined (PI's otppin=userstore convention)
-    to obtain the JWT in a single call. Does NOT use /validate/check step-2
-    because /auth still has the challenge policy applied, so a plain-password
-    /auth after /validate/check success would just trigger another challenge.
+    Resumes the /auth challenge with ``transaction_id`` + ``pass=<OTP>``.
+    No password needed — PI remembers the step-1 password validation against
+    the transaction_id.
     """
     username = request.session.get('pi_username')
-    password = request.session.get('pi_password')
-    if not username or not password:
+    transaction_id = request.session.get('pi_transaction_id')
+    if not username or not transaction_id:
         return redirect('login')
     if request.session.get('pi_2fa_ok'):
         return redirect('dashboard')
-    if not request.session.get('pi_transaction_id'):
-        return redirect('login')
 
     if request.method == 'POST':
         otp = request.POST.get('otp', '').strip()
@@ -128,9 +117,15 @@ def login_otp_view(request):
 
         client = PIClient()
         try:
-            token = client.authenticate(username, password + otp)
+            result = client.auth(username=username, password=otp,
+                                 transaction_id=transaction_id)
         except PIClientError as e:
             log.warning('OTP validation error user=%s: %s', username, e)
+            messages.error(request, _('Verification failed. Please try again.'))
+            return render(request, 'pooler/login_otp.html')
+
+        token = result.get('token')
+        if not token:
             messages.error(request, _('Verification failed. Please try again.'))
             return render(request, 'pooler/login_otp.html')
 

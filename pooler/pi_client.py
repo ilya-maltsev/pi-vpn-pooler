@@ -1,4 +1,5 @@
 """privacyIDEA REST API client."""
+import base64
 import json
 import logging
 from datetime import datetime, timezone, timedelta
@@ -73,48 +74,96 @@ class PIClient:
         self._token = None
         self._token_exp = None
         self._username = None
-        self._password = None
 
     # --- authentication ------------------------------------------------------
 
     def authenticate(self, username, password):
-        """Obtain JWT token from PI.  Returns the token string or raises."""
-        log.debug('PI auth request url=%s/auth user=%s', self.base_url, username)
+        """Obtain a JWT from PI in a single call (no challenge support).
+
+        Used by helper scripts (admin credentials with passOnNoToken) and by
+        ``_ensure_auth`` ONLY when caller code chooses to keep credentials in
+        memory.  The interactive login uses ``auth()`` instead so passwords
+        never reach the session.
+        """
+        result = self.auth(username=username, password=password)
+        token = result.get('token')
+        if not token:
+            raise PIClientError('Authentication requires OTP — use auth() directly.')
+        return token
+
+    def auth(self, username=None, password=None, transaction_id=None, realm=None):
+        """POST /auth — supports challenge-response via transaction_id.
+
+        Step 1 (trigger): ``auth(username, password, realm=…)``
+        Step 2 (answer):  ``auth(username, password=otp, transaction_id=tid)``
+
+        Returns one of:
+          {'token': <JWT>}                     — authentication complete
+          {'transaction_id': <tid>, 'message',
+           'multi_challenge'}                  — challenge triggered, OTP required
+        Raises ``PIClientError`` on auth failure or transport error.
+
+        On success the JWT is cached on the instance so subsequent calls
+        (list_tokens, get_users, …) work without re-auth.
+        """
+        data = {}
+        if username:
+            data['username'] = username
+        if password is not None:
+            data['password'] = password
+        if transaction_id:
+            data['transaction_id'] = transaction_id
+        if realm:
+            data['realm'] = realm
+        log.debug('PI POST /auth user=%s tx=%s', username, transaction_id)
         resp = self._request(
             'POST',
             f'{self.base_url}/auth',
-            data={'username': username, 'password': password},
+            data=data,
             verify=self.verify_ssl,
             timeout=15,
         )
-        data = resp.json()
-        result = data.get('result', {})
-        if not result.get('status') or not isinstance(result.get('value'), dict):
+        try:
+            body = resp.json()
+        except ValueError:
+            raise PIClientError(f'Invalid response from PI (HTTP {resp.status_code})')
+        result = body.get('result', {})
+        if not result.get('status'):
             msg = result.get('error', {}).get('message', 'Authentication failed')
-            log.warning('PI auth failed user=%s: %s', username, msg)
+            log.warning('PI /auth user=%s tx=%s failed: %s',
+                        username, transaction_id, msg)
             raise PIClientError(msg)
-        token = result['value']['token']
+        detail = body.get('detail', {}) or {}
+        # Challenge: status=true, value falsy, transaction_id in detail.
+        if not result.get('value'):
+            tx = detail.get('transaction_id')
+            if tx:
+                log.info('PI /auth challenge triggered user=%s tx=%s', username, tx)
+                return {
+                    'transaction_id': tx,
+                    'message': detail.get('message', ''),
+                    'multi_challenge': detail.get('multi_challenge', []),
+                }
+            raise PIClientError('Authentication failed')
+        # Success: result.value is the token envelope.
+        value = result.get('value') or {}
+        token = value.get('token') if isinstance(value, dict) else None
+        if not token:
+            raise PIClientError('Authentication failed (no token in response)')
         self._token = token
         self._username = username
-        self._password = password
-        log.info('PI auth success user=%s', username)
-        # Decode exp from JWT payload (base64, no verification — just for timing)
-        import json, base64
         payload_b64 = token.split('.')[1]
         payload_b64 += '=' * (-len(payload_b64) % 4)
         payload = json.loads(base64.urlsafe_b64decode(payload_b64))
         self._token_exp = datetime.fromtimestamp(payload['exp'], tz=timezone.utc)
-        return token
+        log.info('PI /auth success user=%s', username)
+        return {'token': token}
 
     def _ensure_auth(self):
         if not self._token:
-            raise PIClientError('Not authenticated. Call authenticate() first.')
+            raise PIClientError('Not authenticated. Call auth() first.')
         if datetime.now(timezone.utc) >= self._token_exp - timedelta(minutes=5):
-            if self._username and self._password:
-                log.debug('JWT near expiry, refreshing for user=%s', self._username)
-                self.authenticate(self._username, self._password)
-            else:
-                raise PIClientError('JWT expired and no credentials stored for refresh.')
+            raise PIClientError('JWT expired — re-login required.')
 
     def _headers(self):
         return {'PI-Authorization': self._token}
@@ -242,12 +291,10 @@ class PIClient:
 
     # --- token management (2FA) -----------------------------------------------
 
-    def set_token(self, token, username=None, password=None):
+    def set_token(self, token, username=None):
         """Inject a pre-existing JWT (e.g. from session) into this client."""
-        import json, base64
         self._token = token
         self._username = username
-        self._password = password
         payload_b64 = token.split('.')[1]
         payload_b64 += '=' * (-len(payload_b64) % 4)
         payload = json.loads(base64.urlsafe_b64decode(payload_b64))
@@ -291,58 +338,6 @@ class PIClient:
         except PIClientError:
             log.warning('list_tokens failed for user=%s — treating as no TOTP', username)
             return False
-
-    def validate_check(self, username=None, password='', realm=None,
-                       transaction_id=None):
-        """POST /validate/check — supports challenge-response.
-
-        Step 1 (trigger):  ``validate_check(username, password, realm=…)``
-        Step 2 (answer):   ``validate_check(password=otp, transaction_id=tid)``
-
-        Returns a dict:
-          value          – True if authentication succeeded
-          transaction_id – challenge transaction ID (present when a challenge
-                           was triggered, i.e. password valid but OTP required)
-          message        – human-readable message from PI
-          multi_challenge – list of per-token challenge details
-        """
-        data = {'pass': password}
-        if username:
-            data['user'] = username
-        if realm:
-            data['realm'] = realm
-        if transaction_id:
-            data['transaction_id'] = transaction_id
-        resp = self._request(
-            'POST',
-            f'{self.base_url}/validate/check',
-            data=data,
-            verify=self.verify_ssl,
-            timeout=15,
-        )
-        try:
-            body = resp.json()
-        except ValueError:
-            raise PIClientError(f'Invalid response from PI (HTTP {resp.status_code})')
-        result = body.get('result', {})
-        if not result.get('status'):
-            msg = result.get('error', {}).get('message', 'validate/check failed')
-            raise PIClientError(msg)
-        detail = body.get('detail', {}) or {}
-        value = bool(result.get('value'))
-        tid = detail.get('transaction_id')
-        if value:
-            log.info('validate/check success user=%s', username)
-        elif tid:
-            log.info('validate/check challenge triggered user=%s tid=%s', username, tid)
-        else:
-            log.warning('validate/check failed user=%s', username)
-        return {
-            'value': value,
-            'transaction_id': tid,
-            'message': detail.get('message', ''),
-            'multi_challenge': detail.get('multi_challenge', []),
-        }
 
     # --- scan all users for IP uniqueness ------------------------------------
 
