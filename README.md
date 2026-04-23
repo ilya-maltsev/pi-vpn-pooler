@@ -17,7 +17,7 @@ privacyIDEA codebase**.
 - **Multiple addresses** — a user can have IPs from different pools (e.g. `VPN1-IP`, `VPN2-IP`)
 - **Release** — free an IP and remove the custom attribute from privacyIDEA
 - **Live allocations** — no local cache; allocation state is always read fresh from privacyIDEA
-- **2FA login** — challenge-response TOTP via privacyIDEA `/validate/check` with optional strict mode (`PI_REQUIRE_OTP`)
+- **2FA login** — challenge-response TOTP entirely on privacyIDEA `/auth` (both steps), no password in session; optional strict mode (`PI_REQUIRE_OTP`)
 - **Dashboard** — stats row, pool cards with subnet-grid visualisation, recent allocations, pool health
 - **Subnet map** — per-pool grid, one cell per host (`gateway` in warn, `used` in accent, free in surface)
 - **Cross-pool allocations view** — search, pool filter, pager
@@ -228,6 +228,7 @@ You can also add the pooler as a service in the main
 | `DJANGO_ALLOWED_HOSTS` | `*` | Comma-separated allowed hostnames |
 | `CSRF_TRUSTED_ORIGINS` | `http://localhost:*` | Comma-separated trusted origins for CSRF |
 | `DJANGO_LOG_LEVEL` | `INFO` | Logging level for `pooler` logger |
+| `DJANGO_LANGUAGE_CODE` | `en` | Default UI language fallback when the visitor has no session/cookie selection and no matching `Accept-Language` header. Must be one of `en`, `ru`. |
 | `SYSLOG_ENABLED` | `false` | Enable remote syslog forwarding from Django. When `false`, logs only go to stdout / container logs. |
 | `SYSLOG_HOST` | (empty) | Remote rsyslog host. Required when `SYSLOG_ENABLED=true`. |
 | `SYSLOG_PORT` | `514` | Remote rsyslog port |
@@ -255,30 +256,38 @@ You can also add the pooler as a service in the main
 ## Authentication Flow
 
 The pooler has no local user database. All authentication is delegated to
-privacyIDEA using a two-step challenge-response flow via `/validate/check`.
+privacyIDEA using a two-step challenge-response flow entirely on `/auth`.
+The password is used exactly once (step 1) and is never persisted to the
+session, never cached in the client, and never round-tripped to the browser.
 
 ### Step 1 — Password + challenge trigger
 
 ```
 User submits username + password
-  → POST /auth  →  JWT token (stored in session for PI API calls)
-  → POST /validate/check { user, pass=password }
-     ├─ value=true  → no TOTP enrolled → login complete (unless PI_REQUIRE_OTP=true)
-     └─ transaction_id returned → TOTP challenge triggered → redirect to OTP page
+  → POST /auth { username, password }
+     ├─ result.value = { token: JWT }           → no TOTP enrolled (passOnNoToken)
+     │                                            └─ if PI_REQUIRE_OTP=true → denied
+     │                                            └─ else → login complete, store JWT
+     ├─ result.value = false, detail.transaction_id  → TOTP challenge triggered
+     │                                            └─ store transaction_id in session
+     │                                               (no password!), redirect to OTP
+     └─ error                                    → wrong password, re-render
 ```
 
 ### Step 2 — OTP verification
 
 ```
 User submits 6-digit TOTP code
-  → POST /validate/check { transaction_id, pass=OTP }
-     ├─ value=true  → login complete → redirect to dashboard
-     └─ value=false → invalid code → retry
+  → POST /auth { transaction_id, password=OTP }
+     ├─ result.value.token → JWT returned → login complete → redirect to dashboard
+     └─ error             → invalid code → retry
 ```
 
 The `transaction_id` ties the two requests together — PI remembers the password
-validation from step 1. Step 2 sends only `transaction_id` + `pass` (the OTP),
-no `user` field needed.
+validation from step 1. Step 2 sends only `transaction_id` + `password=<OTP>`,
+no `username` field needed. The `pi_password` session key that the previous
+implementation carried between steps has been removed; only `pi_transaction_id`
+round-trips, and it is cleared the moment the JWT is obtained.
 
 ### Strict OTP mode (`PI_REQUIRE_OTP`)
 
@@ -318,7 +327,7 @@ pi-vpn-pooler/
 │   ├── urls.py                     # Root URL config
 │   └── wsgi.py                     # WSGI entrypoint
 ├── pooler/                         # Main Django application
-│   ├── pi_client.py                # privacyIDEA REST API client (challenge-response)
+│   ├── pi_client.py                # privacyIDEA REST API client (/auth with transaction_id)
 │   ├── views.py                    # Function-based views (login, 2FA, pools, allocations)
 │   ├── urls.py                     # URL routing (15 routes)
 │   ├── pool_store.py               # YAML-backed pool storage (thread-safe, file-locked)
