@@ -1,3 +1,5 @@
+🌐 **English** | [Русский](README.ru.md)
+
 # pi-vpn-pooler
 
 VPN IP Pool Manager for [privacyIDEA](https://www.privacyidea.org/).
