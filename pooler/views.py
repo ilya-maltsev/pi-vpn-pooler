@@ -199,6 +199,19 @@ def dashboard_view(request):
     # Show first 8 allocations sorted by IP (no "recent" concept anymore)
     sample_allocs = sorted(all_allocs, key=lambda a: tuple(int(x) for x in a.ip_address.split('.')))[:8]
 
+    viewer = request.session.get('pi_username', '?')
+    log.info('Dashboard view user=%s pools=%d total=%d allocated=%d free=%d percent=%d%%',
+             viewer, len(pools), totals['total'], totals['allocated'],
+             totals['free'], totals['percent'])
+    for pd in pool_data:
+        p = pd['pool']
+        log.info('Dashboard pool name=%s cidr=%s attr=%s total=%d allocated=%d free=%d percent=%d%%',
+                 p.name, p.cidr, p.attr_key,
+                 pd['total'], pd['allocated'], pd['free'], pd['percent'])
+    for a in sample_allocs:
+        log.info('Dashboard alloc ip=%s user=%s@%s pool=%s attr=%s',
+                 a.ip_address, a.username, a.realm, a.pool.name, a.attr_key)
+
     return render(request, 'pooler/dashboard.html', {
         'page': 'dashboard',
         'pool_data': pool_data,
@@ -252,6 +265,13 @@ def allocation_list_view(request):
     except Exception:
         pass
 
+    viewer = request.session.get('pi_username', '?')
+    log.info('Allocations view user=%s total=%d page=%d/%d per_page=%d q=%r pool_filter=%r',
+             viewer, total, page, pages, per_page, q, pool_filter)
+    for a in rows:
+        log.info('Allocations row ip=%s user=%s@%s pool=%s attr=%s',
+                 a.ip_address, a.username, a.realm, a.pool.name, a.attr_key)
+
     return render(request, 'pooler/allocation_list.html', {
         'page': 'allocations',
         'rows': rows,
@@ -280,6 +300,15 @@ def pool_list_view(request):
         used_ips = [a.ip_address for a in pool_allocs]
         stats = get_pool_stats(pool, used_ips=used_ips)
         pool_data.append({'pool': pool, **stats})
+
+    viewer = request.session.get('pi_username', '?')
+    log.info('Pools view user=%s pools=%d', viewer, len(pools))
+    for pd in pool_data:
+        p = pd['pool']
+        log.info('Pools row name=%s cidr=%s attr=%s total=%d allocated=%d free=%d percent=%d%%',
+                 p.name, p.cidr, p.attr_key,
+                 pd['total'], pd['allocated'], pd['free'], pd['percent'])
+
     return render(request, 'pooler/pool_list.html', {
         'page': 'pools',
         'pool_data': pool_data,
@@ -357,6 +386,14 @@ def pool_detail_view(request, pk):
         realms = client.get_realms()
     except Exception:
         pass
+
+    viewer = request.session.get('pi_username', '?')
+    log.info('Pool detail view user=%s pool=%s cidr=%s attr=%s total=%d allocated=%d free=%d percent=%d%%',
+             viewer, pool.name, pool.cidr, pool.attr_key,
+             stats['total'], stats['allocated'], stats['free'], stats['percent'])
+    for a in allocs:
+        log.info('Pool detail alloc pool=%s ip=%s user=%s@%s attr=%s',
+                 pool.name, a.ip_address, a.username, a.realm, a.attr_key)
 
     return render(request, 'pooler/pool_detail.html', {
         'page': 'pool_detail',
