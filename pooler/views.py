@@ -269,8 +269,8 @@ def allocation_list_view(request):
     log.info('Allocations view user=%s total=%d page=%d/%d per_page=%d q=%r pool_filter=%r',
              viewer, total, page, pages, per_page, q, pool_filter)
     for a in rows:
-        log.info('Allocations row ip=%s user=%s@%s pool=%s attr=%s',
-                 a.ip_address, a.username, a.realm, a.pool.name, a.attr_key)
+        log.debug('Allocations row ip=%s user=%s@%s pool=%s attr=%s',
+                  a.ip_address, a.username, a.realm, a.pool.name, a.attr_key)
 
     return render(request, 'pooler/allocation_list.html', {
         'page': 'allocations',
@@ -302,12 +302,12 @@ def pool_list_view(request):
         pool_data.append({'pool': pool, **stats})
 
     viewer = request.session.get('pi_username', '?')
-    log.info('Pools view user=%s pools=%d', viewer, len(pools))
+    log.debug('Pools view user=%s pools=%d', viewer, len(pools))
     for pd in pool_data:
         p = pd['pool']
-        log.info('Pools row name=%s cidr=%s attr=%s total=%d allocated=%d free=%d percent=%d%%',
-                 p.name, p.cidr, p.attr_key,
-                 pd['total'], pd['allocated'], pd['free'], pd['percent'])
+        log.debug('Pools row name=%s cidr=%s attr=%s total=%d allocated=%d free=%d percent=%d%%',
+                  p.name, p.cidr, p.attr_key,
+                  pd['total'], pd['allocated'], pd['free'], pd['percent'])
 
     return render(request, 'pooler/pool_list.html', {
         'page': 'pools',

@@ -363,3 +363,9 @@ msgstr "IP-адрес, имя пользователя и realm обязател
 #, python-format
 msgid "IP %(ip)s released."
 msgstr "IP %(ip)s освобождён."
+
+msgid "Your session has expired. Please sign in again."
+msgstr "Сессия истекла. Пожалуйста, войдите снова."
+
+msgid "Your session is no longer valid. Please sign in again."
+msgstr "Сессия недействительна. Пожалуйста, войдите снова."
