@@ -225,7 +225,8 @@ class PIClient:
             log.warning('PI /user/ realm=%s returned non-success', realm)
             raise PIClientError(f'Failed to get users for realm {realm}')
         users = data['result']['value']
-        log.debug('PI /user/ realm=%s returned %d user(s)', realm, len(users))
+        log.info('PI /user/ realm=%s users=%d bytes=%d',
+                 realm, len(users), len(resp.content))
         return users
 
     def get_user_attributes(self, username, realm):

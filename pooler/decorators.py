@@ -9,6 +9,8 @@ from django.contrib import messages
 from django.shortcuts import redirect
 from django.utils.translation import gettext as _
 
+from .pi_client import PIClientError
+
 log = logging.getLogger('pooler')
 
 
@@ -43,5 +45,15 @@ def pi_auth_required(view_func):
             return redirect('login')
         if not request.session.get('pi_2fa_ok'):
             return redirect('login_otp')
-        return view_func(request, *args, **kwargs)
+        try:
+            return view_func(request, *args, **kwargs)
+        except PIClientError as e:
+            # JWT was locally unexpired but PI rejected it (container restart,
+            # cache flush, token revoked, etc.). Treat as session-invalid.
+            username = request.session.get('pi_username', '?')
+            log.info('PI rejected JWT for user=%s (%s) — flushing session',
+                     username, e)
+            request.session.flush()
+            messages.info(request, _('Your session is no longer valid. Please sign in again.'))
+            return redirect('login')
     return wrapper

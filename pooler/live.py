@@ -69,6 +69,7 @@ def live_allocations(session, pool: Pool) -> list[LiveAllocation]:
     realms = client.get_realms()
     for realm in realms:
         users = client.get_users(realm)
+        matched = []
         for user in users:
             username = user.get('username', '')
             if not username:
@@ -79,6 +80,10 @@ def live_allocations(session, pool: Pool) -> list[LiveAllocation]:
                 val = str(value)
                 if key == pool.attr_key and is_valid_ipv4(val) and ip_in_cidr(val, pool.cidr):
                     results.append(_make_alloc(pool, val, username, realm, key, now))
+                    matched.append(f'{username}={val}')
+        log.info('Scan realm=%s pool=%s attr=%s users=%d matched=%d [%s]',
+                 realm, pool.name, pool.attr_key, len(users),
+                 len(matched), ','.join(matched))
 
     results.sort(key=lambda a: tuple(int(x) for x in a.ip_address.split('.')))
     return results
@@ -106,6 +111,7 @@ def live_allocations_all(session, pools: list[Pool]) -> dict[str, list[LiveAlloc
     realms = client.get_realms()
     for realm in realms:
         users = client.get_users(realm)
+        matched_per_attr: dict[str, list[str]] = {k: [] for k in pool_by_attr}
         for user in users:
             username = user.get('username', '')
             if not username:
@@ -121,6 +127,12 @@ def live_allocations_all(session, pools: list[Pool]) -> dict[str, list[LiveAlloc
                     results[pool.id].append(
                         _make_alloc(pool, val, username, realm, key, now)
                     )
+                    matched_per_attr[key].append(f'{username}={val}')
+        for attr_key, matched in matched_per_attr.items():
+            pool = pool_by_attr[attr_key]
+            log.info('Scan realm=%s pool=%s attr=%s users=%d matched=%d [%s]',
+                     realm, pool.name, attr_key, len(users),
+                     len(matched), ','.join(matched))
 
     # Sort each pool's allocations by IP
     for pool_id in results:
